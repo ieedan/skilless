@@ -16,23 +16,37 @@ skilless makes skills a synced, per-project assignment.
 ## v0 scope
 
 **In:** authoring skills locally, two-way sync with skilless.dev, binding skills
-to a project, installing bound skills into local and cloud agents.
+to a project, installing bound skills into local and cloud agents, editing a
+skill's files on the website.
 
 **Out (explicit non-goals):** marketplaces, versions/pinning (latest-wins),
 teams/orgs, packs/collections, in-repo team manifest, vendor-to-git mode, targets
-beyond `.agents` and `.claude`, web-based skill editing (website is read-only).
+beyond `.agents` and `.claude`.
+
+> **On web editing.** Originally a non-goal — the website was read-only — pulled
+> into v0 once the file viewer existed. It writes through `skills.writeFile`,
+> which is user authenticated rather than secret gated like the CLI's path.
+>
+> The `contentHash` is computed by our own SvelteKit server over the whole file
+> set, never taken from the browser, so the trust boundary matches the CLI's.
+>
+> `editedAt` is the open question. The CLI reports a file's mtime, and a browser
+> has none, so a web save stamps its own clock. That makes it the newer edit
+> against any CLI state older than that moment, which is the behaviour you want
+> almost always — but a machine with a clock running fast can still beat a web
+> save it did not see. Same last-write-wins caveat the CLI already carries.
 
 > **On marketplaces (deferred).** skills.sh was evaluated and cut from v0.
 > Findings for whoever picks it up:
 >
 > - **Installing needs no auth.** The official `skills` CLI (`npx skills add
->   vercel-labs/agent-skills`) has exactly two dependencies, `tar` and `yaml` —
+vercel-labs/agent-skills`) has exactly two dependencies, `tar` and `yaml` —
 >   it resolves `owner/repo` to a GitHub tarball and extracts it. Skill content
 >   is public GitHub. A future `skilless add owner/repo` can work the same way,
 >   with zero third-party auth.
 > - **Discovery does need auth.** `/api/v1/skills`, `/search`, `/curated`,
 >   `/audit` all return `401` unauthenticated and require a **Vercel OIDC token**
->   scoped to a Vercel team *and project* — which a CLI cannot obtain unless the
+>   scoped to a Vercel team _and project_ — which a CLI cannot obtain unless the
 >   user maintains a linked Vercel project. So search/ranking/audits must be
 >   proxied by skilless.dev via `@vercel/oidc`, sharing one 600/min bucket across
 >   all users; cache on the upstream `hash`.
@@ -57,6 +71,10 @@ fresh container resolve the right skills.
 
 **Binding** — `project key -> [skill names]`. Lives in the cloud only.
 
+**Global** — a flag on the skill itself. A global skill resolves into _every_
+project without being bound to any, and because that resolution happens server
+side rather than by writing into `~/.claude/skills`, cloud agents get it too.
+
 ---
 
 ## Local layout
@@ -78,9 +96,15 @@ Skills are visible to an agent only once added to a project.
 ```
 <project>/
   .agents/skills/<name>         # symlink -> ~/.skilless/skills/<name>
-  .agents/skills/.skilless.json # ownership record: what skilless created
   .claude/skills/<name>         # symlink -> ../../.agents/skills/<name>
 ```
+
+skilless writes nothing else — no manifest, no ownership record, no state of any
+kind inside the project. Ownership is read off the links: `.agents/skills/<name>`
+points into the store, and `.claude/skills/<name>` points back at
+`.agents/skills/<name>` even in copy mode, where there is no store to point at.
+A file could drift from what is actually on disk; a link cannot. Anything that
+fails both checks belongs to the repo and is never touched.
 
 Per-entry symlinks (not a whole-directory symlink) so a repo that already tracks
 `.claude/skills/their-skill` keeps it and ours land alongside.
@@ -95,7 +119,7 @@ it never appears in `git status` and can't leak into a PR.
 
 - Resolve the exclude file via `git rev-parse --git-common-dir` + `/info/exclude`
   — **not** hardcoded `.git/info/exclude`, which is wrong inside git worktrees.
-- git exclude only applies to *untracked* paths: refuse to write over any path
+- git exclude only applies to _untracked_ paths: refuse to write over any path
   that is already tracked, and report it.
 
 ---
@@ -108,17 +132,17 @@ in `src/commands/`, a token manager in `src/utils/`. Prompts use **enquirer**.
 Commands split into two scopes: **project** (what this repo gets) and
 **library** (what skills exist at all).
 
-| Command | Scope | Behavior |
-|---|---|---|
-| `skilless init` | — | Create `~/.skilless`, run browser sign-in, write `auth.json`. Idempotent. |
-| `skilless auth [--logout]` | — | Re-auth / sign out. |
-| `skilless create <name>` | library | Scaffold `~/.skilless/skills/<name>/SKILL.md`, push it, bind it to the current project, materialize it, and **print the path to edit**. |
-| `skilless add <skill...>` | project | Bind existing library skills to this project and materialize them. |
-| `skilless remove <skill...>` | library | Delete the skill outright: unbind it from every project, delete the materialized files here, remove it from your library, and sync. Confirmed. |
-| `skilless install` | project | Materialize everything bound to this project. The cloud-agent entry point. |
-| `skilless sync` | library | Two-way sync `~/.skilless/skills` <-> cloud, including deletions. |
-| `skilless import <dir>` | library | Import each subdirectory containing a `SKILL.md` as a skill. |
-| `skilless list [--project]` | both | List your library, or this project's bound skills. |
+| Command                                  | Scope   | Behavior                                                                                                                                       |
+| ---------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skilless init`                          | —       | Create `~/.skilless`, run browser sign-in, write `auth.json`. Idempotent.                                                                      |
+| `skilless create <name>`                 | library | Scaffold `~/.skilless/skills/<name>/SKILL.md`, push it, bind it to the current project, materialize it, and **print the path to edit**.        |
+| `skilless add <skill...>`                | project | Bind existing library skills to this project and materialize them.                                                                             |
+| `skilless remove <skill...>`             | library | Delete the skill outright: unbind it from every project, delete the materialized files here, remove it from your library, and sync. Confirmed. |
+| `skilless auth [--logout] [--token <t>]` | —       | Sign in or out. `--token` covers the case where the browser cannot reach localhost.                                                            |
+| `skilless install`                       | project | Materialize everything bound to this project. The cloud-agent entry point.                                                                     |
+| `skilless sync`                          | library | Two-way sync `~/.skilless/skills` <-> cloud, including deletions.                                                                              |
+| `skilless import <dir>`                  | library | Import each subdirectory containing a `SKILL.md` as a skill.                                                                                   |
+| `skilless list [--project]`              | both    | List your library, or this project's bound skills.                                                                                             |
 
 `install` is the only command that must work non-interactively with no local
 state: token from `SKILLESS_TOKEN`, project key from the git remote, content
@@ -128,20 +152,20 @@ fetched fresh and written as real files.
 
 Each skill has a `contentHash` over sorted `(path, contents)` pairs. `state.json`
 records the hash at last successful sync — that third data point is what makes
-deletion safe to propagate, because it distinguishes *deleted* from *never seen*.
+deletion safe to propagate, because it distinguishes _deleted_ from _never seen_.
 
 Let L = local names, R = remote names, S = names in `state.json`.
 
-| condition | meaning | action |
-|---|---|---|
-| in L, in R, hashes equal | unchanged | no-op |
-| in L, in R, local != S, remote == S | edited locally | push |
-| in L, in R, local == S, remote != S | edited elsewhere | pull |
-| in L, in R, both differ from S | conflict | newer `editedAt` wins; loser stashed |
-| in L, not in R, **in S** | deleted remotely | delete locally (confirm) |
-| in L, not in R, **not in S** | newly created here | push |
-| in R, not in L, **in S** | deleted locally | delete remotely (confirm) |
-| in R, not in L, **not in S** | new elsewhere | pull |
+| condition                           | meaning            | action                               |
+| ----------------------------------- | ------------------ | ------------------------------------ |
+| in L, in R, hashes equal            | unchanged          | no-op                                |
+| in L, in R, local != S, remote == S | edited locally     | push                                 |
+| in L, in R, local == S, remote != S | edited elsewhere   | pull                                 |
+| in L, in R, both differ from S      | conflict           | newer `editedAt` wins; loser stashed |
+| in L, not in R, **in S**            | deleted remotely   | delete locally (confirm)             |
+| in L, not in R, **not in S**        | newly created here | push                                 |
+| in R, not in L, **in S**            | deleted locally    | delete remotely (confirm)            |
+| in R, not in L, **not in S**        | new elsewhere      | pull                                 |
 
 A fresh machine has an empty `state.json`, so every remote skill is "new
 elsewhere" and nothing is ever deleted. Deletions prompt unless `--yes`.
@@ -166,21 +190,21 @@ overrides for a whole sync run.
 Server-side deletes are **soft** (30-day trash, restorable from the website).
 Sync can destroy work; this is the seatbelt.
 
-`skilless remove` is the same operation with a nicer front door: it deletes
+`skilless delete` is the same operation with a nicer front door: it deletes
 `~/.skilless/skills/<name>` and runs the sync path, so one code path handles
 both. Deleting the directory by hand and syncing is equivalent.
 
 **Other checkouts.** Removing a skill leaves dangling `.agents/skills/<name>`
 symlinks in any other clone where it was materialized, since skilless doesn't
 track project paths across machines. `install` and `sync` must prune dangling
-entries listed in `.skilless.json` that no longer resolve.
+links that no longer resolve.
 
 ### Environment
 
-| Var | Purpose |
-|---|---|
-| `SKILLESS_TOKEN` | Bearer token for non-interactive use (cloud agents, CI) |
-| `SKILLESS_API_URL` | Override API base (local dev) |
+| Var                | Purpose                                                 |
+| ------------------ | ------------------------------------------------------- |
+| `SKILLESS_TOKEN`   | Bearer token for non-interactive use (cloud agents, CI) |
+| `SKILLESS_API_URL` | Override API base (local dev)                           |
 
 ---
 
@@ -206,7 +230,8 @@ skilless/
 ### Data model (Convex)
 
 ```ts
-skills:     { userId, name, contentHash, editedAt, source?, deletedAt?, updatedAt }
+skills:     { userId, name, contentHash, editedAt, global?, source?, deletedAt?, updatedAt }
+            // global: resolved into every project, bound or not
             // editedAt: client-reported max file mtime — the LWW tiebreak
             // updatedAt: server receive time — display only, never compared
             // source? reserved for future marketplace provenance; unused in v0
@@ -241,17 +266,20 @@ POST   /v1/skills                     # create
 GET    /v1/skills/:name               # full content
 PUT    /v1/skills/:name               # replace files (push)
 DELETE /v1/skills/:name               # soft delete
-GET    /v1/projects/:key/skills       # resolve bindings -> skills + content
-PUT    /v1/projects/:key/skills       # set bindings
+PUT    /v1/skills/:name/global        # mark global, or stop
+GET    /v1/projects/skills?key=      # resolve bindings -> skills + content
+PUT    /v1/projects/skills            # set bindings, key in the body
 ```
 
-`:key` is URL-encoded, e.g. `github.com%2Fieedan%2Flayerchart`.
+The project key is a whole git remote, so it travels as a query parameter rather
+than a path segment — an encoded `%2F` does not survive every proxy.
 
 ### Website (v0)
 
 Sign in with GitHub. List your skills, view a skill's rendered `SKILL.md`, see
-which projects it's bound to, unbind it from a project, and restore
-soft-deleted skills. Mint and revoke CLI tokens. Read-only for content.
+which projects it's bound to, unbind it from a project, toggle whether it is
+global, and restore soft-deleted skills. Mint and revoke CLI tokens. Read-only
+for content.
 
 ---
 

@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.svelte-kit
+.vercel
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo

@@ -1,0 +1,28 @@
+name: Setup
+description: Install pnpm and Node, then install workspace dependencies from the lockfile.
+
+inputs:
+  node-version:
+    description: Node.js version to install. Defaults to the active LTS line.
+    required: false
+    default: '24'
+  registry-url:
+    description: npm registry to authenticate against. Only needed when publishing.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    # version comes from the `packageManager` field in the root package.json
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        registry-url: ${{ inputs.registry-url }}
+        cache: pnpm
+
+    # `postinstall` runs `pnpm -r sync`, which generates the SvelteKit types
+    # that `check` and `lint` need
+    - run: pnpm install --frozen-lockfile
+      shell: bash

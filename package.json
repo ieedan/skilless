@@ -1,0 +1,62 @@
+{
+	"name": "skilless-monorepo",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Monorepo for skilless",
+	"type": "module",
+	"scripts": {
+		"dev": "dotenvx run -f .env.local -- pnpm --parallel --reporter append-only --color dev",
+		"dev:platform": "dotenvx run -f .env.local -- pnpm -F @skilless/platform dev",
+		"dev:web": "dotenvx run -f .env.local -- pnpm -F web dev",
+		"dev:cli": "pnpm -F skilless dev",
+		"build": "pnpm -r build",
+		"build:cli": "pnpm -F skilless build",
+		"format": "prettier --write .",
+		"lint": "prettier --check . && eslint .",
+		"check": "pnpm -r check && tsc -p scripts/tsconfig.json",
+		"sync": "pnpm -r sync",
+		"postinstall": "pnpm -r sync",
+		"test": "pnpm -r test",
+		"changeset": "changeset",
+		"changeset:version": "changeset version && pnpm format",
+		"ci:release": "pnpm build:cli && changeset publish",
+		"setup": "tsx scripts/setup/cli.ts",
+		"setup:dev": "tsx scripts/setup/cli.ts dev",
+		"setup:prod": "tsx scripts/setup/cli.ts prod",
+		"setup:preview": "tsx scripts/setup/cli.ts preview"
+	},
+	"devDependencies": {
+		"@changesets/changelog-github": "^1.0.1",
+		"@changesets/cli": "^3.0.3",
+		"@clack/prompts": "catalog:",
+		"@dotenvx/dotenvx": "2.1.4",
+		"@eslint/compat": "^2.1.0",
+		"@eslint/js": "^10.0.1",
+		"@types/node": "catalog:",
+		"commander": "catalog:",
+		"eslint": "^10.6.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-svelte": "^3.20.0",
+		"globals": "^17.7.0",
+		"package-manager-detector": "catalog:",
+		"prettier": "^3.9.4",
+		"prettier-plugin-svelte": "^4.1.1",
+		"prettier-plugin-tailwindcss": "^0.8.0",
+		"svelte": "catalog:",
+		"tailwindcss": "catalog:",
+		"tsx": "catalog:",
+		"typescript": "catalog:",
+		"typescript-eslint": "^8.62.1",
+		"zod": "catalog:"
+	},
+	"engines": {
+		"pnpm": ">=10.13.1",
+		"node": ">=22"
+	},
+	"packageManager": "pnpm@10.30.1",
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"esbuild"
+		]
+	}
+}

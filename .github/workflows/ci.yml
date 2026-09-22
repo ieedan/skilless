@@ -1,0 +1,74 @@
+name: CI
+
+# Quality gates for pull requests only. These never run against `main` — `main`
+# is protected by requiring them before a merge is allowed, so running them again
+# after the merge would only duplicate work.
+on:
+  pull_request:
+    branches: [main]
+
+# A superseded run on the same pull request is wasted, so cancel it.
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Split into separate jobs so a formatting slip reports in seconds rather than
+# waiting behind the type check.
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm exec prettier --check .
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm exec eslint .
+
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # `tsc` for the CLI and Convex, `svelte-check` for the web app, `tsc` for
+      # the setup scripts. Convex's `_generated` is committed so this needs no
+      # deployment.
+      - run: pnpm check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # the materialization tests shell out to git, which needs an identity
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@skilless.dev"
+          git config --global user.name "CI"
+      - run: pnpm test
+
+  build:
+    name: Build CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # the web app's build needs a Convex deployment, so CI builds what it can
+      # verify: the published artifact
+      - run: pnpm build:cli

@@ -1,0 +1,40 @@
+{
+	"$schema": "https://getbizi.dev/schemas/task.config.json",
+	"tasks": {
+		"dev": {
+			"title": "Dev",
+			"tasks": {
+				"platform": {
+					"title": "Convex",
+					"color": "magenta",
+					"command": "pnpm dev:platform"
+				},
+				"web": {
+					"title": "Web",
+					"color": "green",
+					"command": "pnpm dev:web"
+				},
+				"cli": {
+					"title": "CLI",
+					"color": "blue",
+					"command": "pnpm dev:cli"
+				}
+			}
+		},
+		"build": {
+			"command": "pnpm build"
+		},
+		"check": {
+			"command": "pnpm check"
+		},
+		"test": {
+			"command": "pnpm test"
+		},
+		"format": {
+			"command": "pnpm format"
+		},
+		"lint": {
+			"command": "pnpm lint"
+		}
+	}
+}

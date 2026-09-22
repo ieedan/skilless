@@ -1,0 +1,45 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+# Two releases racing each other would fight over the version pull request.
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write # create the release commit, tags and GitHub release
+      pull-requests: write # open and update the version pull request
+      id-token: write # npm provenance, via OIDC
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # changesets builds changelogs from real commits, so it needs the
+          # whole history rather than the default shallow clone
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+        with:
+          registry-url: https://registry.npmjs.org
+
+      # With no changesets pending this is a no-op. With some pending it opens or
+      # updates the version pull request. Merging that pull request lands the
+      # version bump, and this run then publishes it.
+      - name: Create release pull request or publish
+        uses: changesets/action@v2
+        with:
+          version-script: pnpm changeset:version
+          publish-script: pnpm ci:release
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

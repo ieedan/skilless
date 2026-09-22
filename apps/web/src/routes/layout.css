@@ -1,0 +1,158 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+@import 'remixicon/fonts/remixicon.css';
+
+/*
+ * Design tokens mirror the `light` / `dark` sets in the Penpot file
+ * ("design system" → Foundations). Keep the two in step: Penpot is the source
+ * of truth for the values, this file is the source of truth for the app.
+ *
+ * Deliberate departures from stock shadcn, both made in the design file first:
+ *   - every radius is 0
+ *   - dark --border / --input are lifted off shadcn's white-at-10%, which is
+ *     invisible against a near-black background
+ */
+
+:root {
+	--radius: 0rem;
+
+	--background: #ffffff;
+	--foreground: #09090b;
+	--card: #ffffff;
+	--card-foreground: #09090b;
+	--popover: #ffffff;
+	--popover-foreground: #09090b;
+	--primary: #18181b;
+	--primary-foreground: #fafafa;
+	--secondary: #f4f4f5;
+	--secondary-foreground: #18181b;
+	--muted: #f4f4f5;
+	--muted-foreground: #71717b;
+	--accent: #f4f4f5;
+	--accent-foreground: #18181b;
+	--destructive: #e7000b;
+	--destructive-foreground: #fafafa;
+	--border: #e4e4e7;
+	--input: #e4e4e7;
+	--ring: #9f9fa9;
+	--chart-1: #f54900;
+	--chart-2: #009689;
+	--chart-3: #104e64;
+	--chart-4: #ffb900;
+	--chart-5: #fe9a00;
+	--sidebar: #fafafa;
+	--sidebar-foreground: #09090b;
+	--sidebar-primary: #18181b;
+	--sidebar-primary-foreground: #fafafa;
+	--sidebar-accent: #f4f4f5;
+	--sidebar-accent-foreground: #18181b;
+	--sidebar-border: #e4e4e7;
+	--sidebar-ring: #9f9fa9;
+
+	/* CodeMirror syntax colours (GitHub light) */
+	--cm-keyword: #d73a49;
+	--cm-string: #032f62;
+	--cm-number: #005cc5;
+	--cm-comment: #6a737d;
+	--cm-property: #005cc5;
+	--cm-function: #6f42c1;
+	--cm-type: #6f42c1;
+}
+
+.dark {
+	--background: #09090b;
+	--foreground: #fafafa;
+	--card: #18181b;
+	--card-foreground: #fafafa;
+	--popover: #18181b;
+	--popover-foreground: #fafafa;
+	--primary: #e4e4e7;
+	--primary-foreground: #18181b;
+	--secondary: #27272a;
+	--secondary-foreground: #fafafa;
+	--muted: #27272a;
+	--muted-foreground: #9f9fa9;
+	--accent: #27272a;
+	--accent-foreground: #fafafa;
+	--destructive: #ff6467;
+	--destructive-foreground: #fafafa;
+	--border: #27272a;
+	--input: #3f3f46;
+	--ring: #71717b;
+	--chart-1: #1447e6;
+	--chart-2: #00bc7d;
+	--chart-3: #fe9a00;
+	--chart-4: #ad46ff;
+	--chart-5: #ff2056;
+	--sidebar: #18181b;
+	--sidebar-foreground: #fafafa;
+	--sidebar-primary: #1447e6;
+	--sidebar-primary-foreground: #fafafa;
+	--sidebar-accent: #27272a;
+	--sidebar-accent-foreground: #fafafa;
+	--sidebar-border: #27272a;
+	--sidebar-ring: #71717b;
+
+	/* CodeMirror syntax colours (GitHub dark) */
+	--cm-keyword: #f97583;
+	--cm-string: #9ecbff;
+	--cm-number: #79b8ff;
+	--cm-comment: #8b949e;
+	--cm-property: #79b8ff;
+	--cm-function: #b392f0;
+	--cm-type: #b392f0;
+}
+
+@theme inline {
+	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+
+	--radius-sm: var(--radius);
+	--radius-md: var(--radius);
+	--radius-lg: var(--radius);
+	--radius-xl: var(--radius);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+
+	body {
+		@apply bg-background font-sans text-foreground;
+	}
+}
