@@ -1,0 +1,3 @@
+# skilless
+
+Flexible skill management.
