@@ -1,16 +1,18 @@
 import { Command } from 'commander';
 import { z } from 'zod';
-import { installSkills } from '@/utils/install';
+import { flush, readBindings, readLibrary, refreshProject } from '@/utils/library';
+import { queueUnbind } from '@/utils/pending';
 import * as project from '@/utils/project';
-import { log } from '@/utils/prompts';
+import { log, spin } from '@/utils/prompts';
+import { Remote } from '@/utils/remote';
 import { VERSION } from '@/utils/version';
 import {
 	commonOptions,
 	defaultCommandOptionsSchema,
 	parseOptions,
-	requireApi,
 	requireProjectKey,
-	tryCommand
+	tryCommand,
+	settleRefresh
 } from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
@@ -30,58 +32,58 @@ export const remove = new Command('remove')
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const api = requireApi();
+			const remote = new Remote();
 			const key = requireProjectKey(options.cwd, options.project);
 
-			const resolved = await api.getBindings(key);
-			const present = new Map(resolved.map((skill) => [skill.name, skill]));
+			const [library, bound] = await spin('Loading your library', async () => {
+				await flush(remote);
+				return [await readLibrary(remote), new Set(await readBindings(remote, key))] as const;
+			});
+			const globals = new Set(
+				library.entries.filter((skill) => skill.global).map((skill) => skill.name)
+			);
 
-			const keep: string[] = [];
-			let removedAny = false;
-
-			for (const skill of resolved) {
-				if (!names.includes(skill.name)) {
-					// globals are not bindings, so they must not be written back as ones
-					if (!skill.global) keep.push(skill.name);
-					continue;
-				}
-
-				if (skill.global) {
-					log.warn(`${skill.name} is global, so it is in every project.`);
-					log.dim(
-						`  Run \`skilless add --not-global ${skill.name}\` to take it out of every project.`
-					);
-					continue;
-				}
-
-				removedAny = true;
-			}
+			const removing: string[] = [];
 
 			for (const name of names) {
-				if (!present.has(name)) log.warn(`${name} is not in this project.`);
+				if (globals.has(name)) {
+					log.warn(`${name} is global, so it is in every project.`);
+					log.dim(`  Run \`skilless add --not-global ${name}\` to take it out of every project.`);
+					continue;
+				}
+
+				if (!bound.has(name)) {
+					log.warn(`${name} is not in this project.`);
+					continue;
+				}
+
+				removing.push(name);
 			}
 
-			if (!removedAny) return;
+			if (removing.length === 0) {
+				remote.report();
+				return;
+			}
 
-			await api.setBindings(key, keep);
+			queueUnbind(key, removing);
 
 			const root = project.projectRoot(options.cwd);
-			const result = await installSkills(root, await api.getBindings(key), {
-				copy: options.copy,
-				reconcile: true
+			const result = await spin('Updating this project', async () => {
+				await flush(remote);
+				return refreshProject(remote, root, key, { copy: options.copy });
 			});
 
-			for (const name of result.removed) {
-				log.step(`Removed ${name} from this project.`);
-			}
+			for (const name of removing) log.step(`Removed ${name} from this project.`);
 
-			if (result.removed.length > 0) {
-				log.blank();
-				log.dim(
-					`Run \`skilless delete ${result.removed.join(' ')}\` to delete ${
-						result.removed.length === 1 ? 'it' : 'them'
-					}.`
-				);
-			}
+			await settleRefresh(result, { copy: options.copy });
+
+			log.blank();
+			log.dim(
+				`Run \`skilless delete ${removing.join(' ')}\` to delete ${
+					removing.length === 1 ? 'it' : 'them'
+				}.`
+			);
+
+			remote.report();
 		});
 	});

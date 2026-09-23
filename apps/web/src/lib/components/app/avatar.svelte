@@ -17,5 +17,5 @@
 	width={size}
 	height={size}
 	style="width:{size}px;height:{size}px"
-	class="shrink-0 {className}"
+	class="shrink-0 rounded-full {className}"
 />

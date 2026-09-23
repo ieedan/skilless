@@ -49,8 +49,14 @@ jobs:
       - run: pnpm check
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    # the CLI links into projects and the home directory, which behaves
+    # differently on each OS — junctions on Windows, symlinks elsewhere
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -61,6 +67,7 @@ jobs:
           git config --global user.email "ci@skilless.dev"
           git config --global user.name "CI"
       - run: pnpm test
+        shell: bash
 
   build:
     name: Build CLI

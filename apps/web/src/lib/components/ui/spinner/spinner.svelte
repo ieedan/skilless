@@ -1,18 +1,19 @@
 <script lang="ts">
+	import RiLoader4Line from 'remixicon-svelte/icons/loader-4-line';
 	import { cn } from '$lib/utils.js';
-	import type { HTMLAttributes } from 'svelte/elements';
+	import type { SVGAttributes } from 'svelte/elements';
 
 	let {
 		class: className,
 		role = 'status',
 		'aria-label': ariaLabel = 'Loading',
 		...restProps
-	}: HTMLAttributes<HTMLElement> = $props();
+	}: SVGAttributes<SVGSVGElement> = $props();
 </script>
 
-<i
+<RiLoader4Line
 	{role}
 	aria-label={ariaLabel}
-	class={cn('ri-loader-4-line size-4 animate-spin text-base leading-none', className)}
+	class={cn('size-4 animate-spin', className)}
 	{...restProps}
-></i>
+/>

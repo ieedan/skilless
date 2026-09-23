@@ -1,20 +1,19 @@
 import { api } from '@skilless/platform';
 import { error, redirect } from '@sveltejs/kit';
-import { listDirectory } from '$lib/files';
-import { deleteSkillPath } from '$lib/server/skill-files';
+import { convexLoad } from 'convex-svelte/sveltekit';
+import { deleteSkillPath, readContents } from '$lib/server/skill-files';
 
 export async function load({ locals, params }) {
-	const skill = await locals.convex.query(api.skills.get, { name: params.name });
-	if (!skill) error(404, 'No skill by that name');
+	// Live, like the skills list, so the menu's project toggles show without a
+	// reload. The row carries the frontmatter and file paths, so nothing here
+	// reads a file.
+	const [skill, projects] = await Promise.all([
+		convexLoad(api.skills.get, { name: params.name }),
+		convexLoad(api.projects.list, {})
+	]);
+	if (!skill.data) error(404, 'No skill by that name');
 
-	// Always the file list, even for a one-file skill: this is where the skill
-	// crumb points, and bouncing you back to the file you came from would make
-	// that crumb dead. The skills list links straight at the file instead, so
-	// getting there is still one request.
-	return {
-		skill: { name: skill.name },
-		entries: listDirectory(skill.files)
-	};
+	return { skill, projects, contents: readContents(locals, params.name) };
 }
 
 export const actions = {

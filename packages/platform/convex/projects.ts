@@ -10,10 +10,35 @@ export const list = query({
 		const user = await ctx.auth.getUserIdentity();
 		if (!user) return [];
 
-		return await ctx.db
+		const projects = await ctx.db
 			.query('projects')
 			.withIndex('by_user', (q) => q.eq('userId', user.subject))
 			.collect();
+
+		return projects.sort((a, b) => a.key.localeCompare(b.key));
+	}
+});
+
+/** Binds one skill to one project. A no-op when it is already bound. */
+export const bind = mutation({
+	args: { projectId: v.id('projects'), skillId: v.id('skills') },
+	handler: async (ctx, args) => {
+		const userId = await requireUser(ctx);
+
+		const project = await ctx.db.get(args.projectId);
+		if (!project || project.userId !== userId) return;
+
+		const skill = await ctx.db.get(args.skillId);
+		if (!skill || skill.userId !== userId || skill.deletedAt !== undefined) return;
+
+		const binding = await ctx.db
+			.query('bindings')
+			.withIndex('by_project_and_skill', (q) =>
+				q.eq('projectId', args.projectId).eq('skillId', args.skillId)
+			)
+			.first();
+
+		if (!binding) await ctx.db.insert('bindings', args);
 	}
 });
 
@@ -43,18 +68,14 @@ export const unbind = mutation({
 
 /* -------------------------------------------------------------------- api */
 
-/** Resolves a project's bindings to full skills, including file contents, for `skilless install`. */
+/**
+ * Resolves a project's bindings to skills, for `skilless install`. Rows only —
+ * their files come from `links:readFor`.
+ */
 export const boundFor = secretQuery({
 	args: { userId: v.string(), key: v.string() },
 	handler: async (ctx, args) => {
-		const skills = await model.boundSkills(ctx, args.userId, args.key);
-
-		return await Promise.all(
-			skills.map(async (skill) => ({
-				...skill,
-				files: await model.readFiles(ctx, skill._id)
-			}))
-		);
+		return await model.boundSkills(ctx, args.userId, args.key);
 	}
 });
 

@@ -4,18 +4,13 @@ import path from 'pathe';
 import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import * as fsu from '@/utils/fs';
-import { confirm, log } from '@/utils/prompts';
-import { isValidName, readSkill, SKILL_FILE, writeSkill } from '@/utils/skill';
-import { readState, writeState } from '@/utils/state';
+import { flush, readLibrary, saveToLibrary } from '@/utils/library';
+import { confirm, log, spin } from '@/utils/prompts';
+import { Remote } from '@/utils/remote';
+import { isValidName, readSkill, SKILL_FILE } from '@/utils/skill';
 import type { LocalSkill } from '@/utils/types';
 import { VERSION } from '@/utils/version';
-import {
-	commonOptions,
-	defaultCommandOptionsSchema,
-	parseOptions,
-	requireApi,
-	tryCommand
-} from './utils';
+import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
 	yes: z.boolean(),
@@ -43,7 +38,7 @@ export const importCommand = new Command('import')
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const api = requireApi();
+			const remote = new Remote();
 			const source = path.resolve(options.cwd, dir);
 
 			if (!fsu.exists(source)) {
@@ -58,7 +53,11 @@ export const importCommand = new Command('import')
 				});
 			}
 
-			const existing = new Set((await api.listSkills()).map((skill) => skill.name));
+			const library = await spin('Loading your library', async () => {
+				await flush(remote);
+				return readLibrary(remote);
+			});
+			const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
 
 			const importable: LocalSkill[] = [];
 			const skipped: { name: string; reason: string }[] = [];
@@ -88,6 +87,7 @@ export const importCommand = new Command('import')
 
 			if (importable.length === 0) {
 				log.info('Nothing to import.');
+				remote.report();
 				return;
 			}
 
@@ -97,26 +97,19 @@ export const importCommand = new Command('import')
 			const ok = options.yes || (await confirm(`Import ${importable.length} skill(s)?`, true));
 			if (!ok) return;
 
-			const state = readState();
+			const imported = await spin(`Importing ${importable.length} skill(s)`, () =>
+				saveToLibrary(remote, importable, existing)
+			);
 
-			for (const skill of importable) {
-				writeSkill(skill.name, skill.files, skill.editedAt);
-				await api.putSkill(skill.name, skill.files, skill.editedAt);
-
-				state.skills[skill.name] = {
-					contentHash: skill.contentHash,
-					editedAt: skill.editedAt,
-					syncedAt: Date.now()
-				};
-
-				log.step(`Imported ${skill.name} into your library.`);
+			for (const name of imported) {
+				log.step(`Imported ${name} into your library.`);
 			}
-
-			writeState(state);
 
 			log.blank();
 			log.dim(
 				`Run \`skilless add ${importable[0]?.name ?? '<skill>'}\` to add one to this project.`
 			);
+
+			remote.report();
 		});
 	});

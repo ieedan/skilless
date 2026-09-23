@@ -2,7 +2,7 @@ export type SkillFile = { path: string; contents: string };
 
 export type Entry =
 	| { kind: 'directory'; name: string; path: string; count: number }
-	| { kind: 'file'; name: string; path: string; contents: string };
+	| { kind: 'file'; name: string; path: string };
 
 /**
  * Skills store files as flat paths (`agents/openai.yaml`), but they are browsed
@@ -11,7 +11,7 @@ export type Entry =
  *
  * `prefix` is '' for the skill root, otherwise a path with no trailing slash.
  */
-export function listDirectory(files: SkillFile[], prefix = ''): Entry[] {
+export function listDirectory(files: { path: string }[], prefix = ''): Entry[] {
 	const head = prefix === '' ? '' : `${prefix}/`;
 
 	const directories = new Map<string, number>();
@@ -24,7 +24,7 @@ export function listDirectory(files: SkillFile[], prefix = ''): Entry[] {
 		const slash = rest.indexOf('/');
 
 		if (slash === -1) {
-			entries.push({ kind: 'file', name: rest, path: file.path, contents: file.contents });
+			entries.push({ kind: 'file', name: rest, path: file.path });
 			continue;
 		}
 
@@ -57,6 +57,6 @@ export function listDirectory(files: SkillFile[], prefix = ''): Entry[] {
 }
 
 /** True when `path` names a directory within the skill rather than a file. */
-export function isDirectory(files: SkillFile[], path: string): boolean {
+export function isDirectory(files: { path: string }[], path: string): boolean {
 	return files.some((file) => file.path.startsWith(`${path}/`));
 }

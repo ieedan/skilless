@@ -15,7 +15,7 @@ export class SkillessError extends Error {
 export class NotAuthenticatedError extends SkillessError {
 	constructor() {
 		super('You are not signed in.', {
-			suggestion: 'Run `skilless init` to sign in, or set SKILLESS_TOKEN.'
+			suggestion: 'Run `skilless auth` to sign in, or set SKILLESS_TOKEN.'
 		});
 	}
 }
@@ -26,5 +26,22 @@ export class NotAProjectError extends SkillessError {
 			suggestion:
 				'skilless identifies a project by its git remote. Add one, or pass --project <key>.'
 		});
+	}
+}
+
+/**
+ * The server could not be reached at all, as opposed to answering with an
+ * error. Commands that only need the server to share a change catch this and
+ * finish locally; `sync` and `install` cannot, so they let it through.
+ */
+export class OfflineError extends SkillessError {
+	readonly url: string;
+
+	constructor(url: string, cause?: unknown) {
+		super(`Couldn't reach ${url}.`, {
+			suggestion: 'Check your connection, or set SKILLESS_API_URL to point elsewhere.',
+			cause
+		});
+		this.url = url;
 	}
 }

@@ -26,3 +26,29 @@ export function scaffold(name: string, description: string): SkillFile[] {
 		}
 	];
 }
+
+/**
+ * Badges for the frontmatter fields every major agent understands, read from
+ * the `metadata` the platform stores on the skill row (every field but `name`
+ * and `description`).
+ */
+export function skillBadges(metadata: Record<string, unknown> | undefined) {
+	const fields = metadata ?? {};
+	const text = (value: unknown) =>
+		typeof value === 'string' || typeof value === 'number' ? String(value).trim() : undefined;
+
+	// the spec has it space separated; some write it as a YAML list
+	const tools = fields['allowed-tools'];
+	const allowedTools = Array.isArray(tools)
+		? tools.map(String)
+		: (text(tools)?.split(/\s+/).filter(Boolean) ?? []);
+
+	const version = text((fields.metadata as Record<string, unknown> | undefined)?.version);
+
+	return {
+		modelInvocable: fields['disable-model-invocation'] !== true,
+		version: version?.replace(/^v/, ''),
+		license: text(fields.license),
+		allowedTools
+	};
+}

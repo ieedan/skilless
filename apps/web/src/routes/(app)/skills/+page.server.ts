@@ -1,10 +1,17 @@
 import { api } from '@skilless/platform';
 import { fail, redirect } from '@sveltejs/kit';
-import { hashFiles } from '$lib/server/hash';
+import { convexLoad } from 'convex-svelte/sveltekit';
 import { isValidName, NAME_RULES, scaffold } from '$lib/skill';
 
-export async function load({ locals }) {
-	return { skills: await locals.convex.query(api.skills.list, {}) };
+// Live: the transport hook turns these into subscriptions on the client, so
+// changes from the CLI or another tab show up without a reload.
+export async function load() {
+	const [skills, projects] = await Promise.all([
+		convexLoad(api.skills.list, {}),
+		convexLoad(api.projects.list, {})
+	]);
+
+	return { skills, projects };
 }
 
 export const actions = {
@@ -30,15 +37,32 @@ export const actions = {
 
 		const files = scaffold(name, description);
 
-		await locals.convex.mutation(api.skills.create, {
-			name,
-			files,
-			contentHash: hashFiles(files),
-			editedAt: Date.now()
-		});
+		await locals.convex.action(api.files.create, { name, files });
 
 		// straight into the editor — the whole point of creating one is to write it
 		redirect(303, `/skills/${encodeURIComponent(name)}/${files[0].path}`);
+	},
+
+	setBinding: async ({ locals, request }) => {
+		const data = await request.formData();
+		const args = {
+			projectId: String(data.get('projectId')) as never,
+			skillId: String(data.get('skillId')) as never
+		};
+
+		await locals.convex.mutation(
+			data.get('bound') === 'true' ? api.projects.bind : api.projects.unbind,
+			args
+		);
+	},
+
+	setGlobal: async ({ locals, request }) => {
+		const data = await request.formData();
+
+		await locals.convex.mutation(api.skills.setGlobal, {
+			name: String(data.get('name')),
+			global: data.get('global') === 'true'
+		});
 	},
 
 	remove: async ({ locals, request }) => {

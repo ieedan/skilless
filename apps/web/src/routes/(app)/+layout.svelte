@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AppSidebar from '$lib/components/app/app-sidebar.svelte';
+	import * as Sidebar from '$lib/components/ui/sidebar';
 	import Breadcrumb from '$lib/components/app/breadcrumb.svelte';
 	import { iconFor } from '$lib/components/app/file-icon.svelte';
+	import RiFolder3Fill from 'remixicon-svelte/icons/folder-3-fill';
 	import { provideHeaderActions } from '$lib/components/app/header-actions.svelte';
 	import { ConfirmDeleteDialog } from '$lib/components/ui/confirm-delete-dialog';
 
@@ -12,7 +14,7 @@
 
 	const SECTIONS: Record<string, string> = {
 		skills: 'Skills',
-		tokens: 'Tokens',
+		settings: 'Settings',
 		account: 'Account'
 	};
 
@@ -42,8 +44,9 @@
 				return {
 					label,
 					href: `/${[section, ...rest.slice(0, i + 1)].join('/')}`,
-					icon: file?.icon ?? (folder ? 'ri-folder-3-fill' : undefined),
-					iconClass: file?.class ?? (folder ? 'text-sky-300/80' : undefined)
+					mono: section === 'skills' && i === 0,
+					icon: file?.icon ?? (folder ? RiFolder3Fill : undefined),
+					iconClass: file?.class ?? (folder ? 'text-sky-500 dark:text-sky-300/80' : undefined)
 				};
 			})
 		];
@@ -51,15 +54,21 @@
 </script>
 
 <!--
-	The shell from the design: a sidebar and header wrapping a content panel that
-	floats on the page background, inset from the right and bottom edges.
+	The shell from the design: a tinted sidebar beside a full-bleed content area,
+	with the breadcrumbs in a header ruled off from the page below. Below `md`
+	the sidebar becomes a sheet, opened from the button before the breadcrumbs.
 -->
-<div class="flex h-dvh">
+<Sidebar.Provider class="h-dvh min-h-0 bg-card" style="--sidebar-width: 15rem;">
 	<AppSidebar user={data.user} />
 
-	<div class="flex min-w-0 flex-1 flex-col pr-5 pb-5">
-		<header class="flex h-14 shrink-0 items-center justify-between gap-4">
-			<Breadcrumb items={crumbs} />
+	<Sidebar.Inset class="min-w-0 bg-card">
+		<header
+			class="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border px-4 md:px-6"
+		>
+			<div class="flex min-w-0 items-center gap-2">
+				<Sidebar.Trigger class="-ml-1.5 text-muted-foreground md:hidden" />
+				<Breadcrumb items={crumbs} />
+			</div>
 
 			{#if headerActions.current}
 				<div class="flex shrink-0 items-center gap-2">{@render headerActions.current()}</div>
@@ -67,15 +76,15 @@
 		</header>
 
 		<!--
-			The panel spans the full width; each page decides its own measure. Reading
+			The content spans the full width; each page decides its own measure. Reading
 			views cap themselves (see ReadingColumn) while the file editor takes the
 			whole width, which is what you want for code.
 		-->
-		<main class="min-h-0 flex-1 overflow-y-auto border border-border bg-card">
+		<div class="min-h-0 flex-1 overflow-y-auto">
 			{@render children()}
-		</main>
-	</div>
-</div>
+		</div>
+	</Sidebar.Inset>
+</Sidebar.Provider>
 
 <!-- one instance backs every confirmDelete() call in this group -->
 <ConfirmDeleteDialog />

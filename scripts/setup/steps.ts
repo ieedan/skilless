@@ -77,39 +77,63 @@ const dependencies: Step = {
 	}
 };
 
+const GITHUB_KEYS = ['GITHUB_APP_SLUG', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'];
+
+/**
+ * A GitHub App rather than an OAuth app: its user tokens can list and clone the
+ * repos a user installs it on, private ones included.
+ */
 function githubApp(ctx: StepContext, siteUrl: string, label: string): Promise<void> {
 	return (async () => {
-		if (existing(ctx, 'GITHUB_CLIENT_ID') && existing(ctx, 'GITHUB_CLIENT_SECRET')) {
-			const reuse = await confirm({ message: `Reuse the saved ${label} GitHub app?` });
+		if (GITHUB_KEYS.every((key) => existing(ctx, key))) {
+			const reuse = await confirm({ message: `Reuse the saved ${label} GitHub App?` });
 			exitIfCancelled(reuse);
 
 			if (reuse) {
-				remember(ctx, 'GITHUB_CLIENT_ID', existing(ctx, 'GITHUB_CLIENT_ID') as string);
-				remember(ctx, 'GITHUB_CLIENT_SECRET', existing(ctx, 'GITHUB_CLIENT_SECRET') as string);
+				for (const key of GITHUB_KEYS) remember(ctx, key, existing(ctx, key) as string);
 				return;
 			}
 		}
 
 		note(
-			`https://github.com/settings/applications/new\n\nSign in is GitHub only, so this is what creates accounts.`,
-			`Create a ${label} OAuth app`
+			`https://github.com/settings/apps/new\n\nSign in is GitHub only, so this is what creates accounts.`,
+			`Create a ${label} GitHub App`
 		);
 
 		block(
 			[
-				'    Application name            skilless, or anything unique',
-				`    Homepage URL                ${siteUrl}`,
-				`    Authorization callback URL  ${siteUrl}/api/auth/callback/github`
+				'    GitHub App name                      skilless, or anything unique',
+				`    Homepage URL                         ${siteUrl}`,
+				`    Callback URL                         ${siteUrl}/api/auth/callback/github`,
+				'    Expire user authorization tokens     checked',
+				'    Request user authorization (OAuth)',
+				'      during installation                checked',
+				'    Webhook → Active                     unchecked',
+				'',
+				'    Repository permissions',
+				'      Contents                           Read-only',
+				'      Metadata                           Read-only',
+				'    Account permissions',
+				'      Email addresses                    Read-only',
+				'',
+				'    Where can this GitHub App be installed?  Any account'
 			].join('\n')
 		);
 
 		log.message(
-			'Register the app. The Client ID is on the next page — generate a client secret there too.'
+			'Create the app. The Client ID is on the next page — generate a client secret there too. The slug is the last part of the public link, github.com/apps/<slug>.'
 		);
+
+		const slug = await text({
+			message: 'GITHUB_APP_SLUG',
+			placeholder: 'skilless',
+			validate: (value) => (value?.trim() ? undefined : 'Required.')
+		});
+		exitIfCancelled(slug);
 
 		const clientId = await text({
 			message: 'GITHUB_CLIENT_ID',
-			placeholder: 'Ov23li…',
+			placeholder: 'Iv23li…',
 			validate: (value) => (value?.trim() ? undefined : 'Required.')
 		});
 		exitIfCancelled(clientId);
@@ -120,8 +144,91 @@ function githubApp(ctx: StepContext, siteUrl: string, label: string): Promise<vo
 		});
 		exitIfCancelled(clientSecret);
 
+		remember(ctx, 'GITHUB_APP_SLUG', slug.trim());
 		remember(ctx, 'GITHUB_CLIENT_ID', clientId.trim());
 		remember(ctx, 'GITHUB_CLIENT_SECRET', clientSecret.trim());
+	})();
+}
+
+const R2_KEYS = [
+	'R2_BUCKET',
+	'R2_ENDPOINT',
+	'R2_ACCESS_KEY_ID',
+	'R2_SECRET_ACCESS_KEY',
+	'R2_PUBLIC_URL'
+];
+
+/** Skill file contents live in R2, so every deployment needs a bucket of its own. */
+function r2Bucket(ctx: StepContext, label: string): Promise<void> {
+	return (async () => {
+		if (R2_KEYS.every((key) => existing(ctx, key))) {
+			const reuse = await confirm({ message: `Reuse the saved ${label} R2 bucket?` });
+			exitIfCancelled(reuse);
+
+			if (reuse) {
+				for (const key of R2_KEYS) remember(ctx, key, existing(ctx, key) as string);
+				return;
+			}
+		}
+
+		note(
+			[
+				'https://dash.cloudflare.com → R2 Object Storage',
+				'',
+				`1. Create a bucket for ${label}, e.g. skilless-${label === 'development' ? 'dev' : 'prod'}.`,
+				'2. Manage R2 API Tokens → Create API Token, with Object Read & Write',
+				'   scoped to that bucket.',
+				'3. Bucket → Settings → Public Development URL → Enable, and copy it.',
+				'   Files are read from it by unguessable URL, so the bucket is public.',
+				'',
+				'No CORS policy is needed — browsers never talk to the bucket directly.'
+			].join('\n'),
+			`Create a ${label} R2 bucket`
+		);
+
+		const bucket = await text({
+			message: 'R2_BUCKET',
+			placeholder: `skilless-${label === 'development' ? 'dev' : 'prod'}`,
+			initialValue: recall(ctx, 'R2_BUCKET'),
+			validate: (value) => (value?.trim() ? undefined : 'Required.')
+		});
+		exitIfCancelled(bucket);
+
+		const endpoint = await text({
+			message: 'R2_ENDPOINT',
+			placeholder: 'https://<account id>.r2.cloudflarestorage.com',
+			initialValue: recall(ctx, 'R2_ENDPOINT'),
+			validate: (value) =>
+				value?.trim().startsWith('https://') ? undefined : 'Must start with https://.'
+		});
+		exitIfCancelled(endpoint);
+
+		const accessKeyId = await text({
+			message: 'R2_ACCESS_KEY_ID',
+			validate: (value) => (value?.trim() ? undefined : 'Required.')
+		});
+		exitIfCancelled(accessKeyId);
+
+		const secretAccessKey = await password({
+			message: 'R2_SECRET_ACCESS_KEY',
+			validate: (value) => (value?.trim() ? undefined : 'Required.')
+		});
+		exitIfCancelled(secretAccessKey);
+
+		const publicUrl = await text({
+			message: 'R2_PUBLIC_URL',
+			placeholder: 'https://pub-<hash>.r2.dev',
+			initialValue: recall(ctx, 'R2_PUBLIC_URL'),
+			validate: (value) =>
+				value?.trim().startsWith('https://') ? undefined : 'Must start with https://.'
+		});
+		exitIfCancelled(publicUrl);
+
+		remember(ctx, 'R2_BUCKET', bucket.trim());
+		remember(ctx, 'R2_ENDPOINT', endpoint.trim().replace(/\/$/, ''));
+		remember(ctx, 'R2_ACCESS_KEY_ID', accessKeyId.trim());
+		remember(ctx, 'R2_SECRET_ACCESS_KEY', secretAccessKey.trim());
+		remember(ctx, 'R2_PUBLIC_URL', publicUrl.trim().replace(/\/$/, ''));
 	})();
 }
 
@@ -160,8 +267,8 @@ const CONVEX_KEYS = [
 	'FUNCTION_SECRET',
 	'BETTER_AUTH_SECRET',
 	'SITE_URL',
-	'GITHUB_CLIENT_ID',
-	'GITHUB_CLIENT_SECRET'
+	...GITHUB_KEYS,
+	...R2_KEYS
 ];
 
 /* -------------------------------------------------------------------- dev */
@@ -227,6 +334,11 @@ const siteDev: Step = {
 const githubDev: Step = {
 	name: 'github',
 	run: (ctx) => githubApp(ctx, DEV_URL, 'development')
+};
+
+const r2Dev: Step = {
+	name: 'r2',
+	run: (ctx) => r2Bucket(ctx, 'development')
 };
 
 const writeDevEnv: Step = {
@@ -327,6 +439,11 @@ function deployProd(ctx: StepContext, captureUrl: boolean): string | null {
 
 	return url || null;
 }
+
+const r2Prod: Step = {
+	name: 'r2-prod',
+	run: (ctx) => r2Bucket(ctx, 'production')
+};
 
 /** Deploys, which is why it sits after everything that only needed answers. */
 const convexProdProvision: Step = {
@@ -443,7 +560,19 @@ const previewVercel: Step = {
 		);
 
 		note(
-			'GitHub OAuth callbacks cannot be wildcarded, so sign in does not work on a preview URL until you add that exact URL as a callback on an OAuth app.',
+			[
+				'https://dashboard.convex.dev',
+				'',
+				'Your project → Settings → Environment Variables → Default for preview deployments.',
+				'Add R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and',
+				'R2_PUBLIC_URL — a bucket of its own, not production’s. Without them previews',
+				'can show skills but not open or save their files.'
+			].join('\n'),
+			'Preview R2 bucket'
+		);
+
+		note(
+			'GitHub App callbacks cannot be wildcarded, so sign in does not work on a preview URL until you add that exact URL as a callback URL on the GitHub App (it takes up to 10).',
 			'Sign in on previews'
 		);
 	}
@@ -463,6 +592,7 @@ export const devSteps: Step[] = [
 	siteDev,
 	secretsStep('secrets'),
 	githubDev,
+	r2Dev,
 	convexProvision,
 	convexEnvDev,
 	convexPush,
@@ -475,6 +605,7 @@ export const prodSteps: Step[] = [
 	dependencies,
 	domain,
 	githubProd,
+	r2Prod,
 	secretsStep('secrets-prod'),
 	convexProdProvision,
 	convexEnvProd,

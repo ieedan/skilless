@@ -10,11 +10,14 @@ const cli = program
 	.addCommand(commands.auth)
 	.addCommand(commands.create)
 	.addCommand(commands.add)
+	.addCommand(commands.update)
 	.addCommand(commands.remove)
 	.addCommand(commands.deleteCommand)
 	.addCommand(commands.install)
 	.addCommand(commands.sync)
 	.addCommand(commands.importCommand)
-	.addCommand(commands.list);
+	.addCommand(commands.migrate)
+	.addCommand(commands.list)
+	.addCommand(commands.config);
 
 export { cli };

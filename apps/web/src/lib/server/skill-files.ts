@@ -1,6 +1,22 @@
 import { api } from '@skilless/platform';
+import { fetchFiles } from '@skilless/platform/client';
 import { fail, redirect, type RequestEvent } from '@sveltejs/kit';
-import { hashFiles } from './hash';
+
+/**
+ * Contents of a skill's files keyed by path, fetched from R2. The slow part of
+ * any skill page, so pages that only list files return this unawaited and let
+ * it stream in behind the page; only "Copy contents" waits on it.
+ */
+export async function readContents(
+	locals: App.Locals,
+	name: string,
+	paths?: string[]
+): Promise<Record<string, string>> {
+	const links = (await locals.convex.query(api.links.read, { name })) ?? [];
+	const wanted = paths ? links.filter((link) => paths.includes(link.path)) : links;
+	const files = await fetchFiles(wanted);
+	return Object.fromEntries(files.map((file) => [file.path, file.contents]));
+}
 
 /**
  * Deletes a file or a whole directory from a skill.
@@ -36,12 +52,7 @@ export async function deleteSkillPath(event: RequestEvent, options: { currentDir
 		return fail(400, { message: 'A skill needs at least one file. Delete the skill instead.' });
 	}
 
-	await locals.convex.mutation(api.skills.deletePath, {
-		name,
-		path,
-		contentHash: hashFiles(remaining),
-		editedAt: Date.now()
-	});
+	await locals.convex.action(api.files.deletePath, { name, path });
 
 	// If the folder we are looking at just lost its last file it no longer
 	// resolves, so fall back to the skill root rather than 404 on reload.

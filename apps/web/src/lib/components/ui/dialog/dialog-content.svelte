@@ -4,6 +4,7 @@
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
 	import * as Dialog from './index.js';
 	import DialogPortal from './dialog-portal.svelte';
+	import RiCloseLine from 'remixicon-svelte/icons/close-line';
 	import type { Snippet } from 'svelte';
 	import type { ComponentProps } from 'svelte';
 
@@ -27,7 +28,7 @@
 		bind:ref
 		data-slot="dialog-content"
 		class={cn(
-			'data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%_-_2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm',
+			'fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%_-_2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-lg duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
 			className
 		)}
 		{...restProps}
@@ -37,7 +38,7 @@
 			<DialogPrimitive.Close data-slot="dialog-close">
 				{#snippet child({ props })}
 					<Button variant="ghost" class="absolute top-2 right-2" size="icon-sm" {...props}>
-						<i class="ri-close-line size-4 leading-none" aria-hidden="true"></i>
+						<RiCloseLine class="size-4" aria-hidden="true" />
 						<span class="sr-only">Close</span>
 					</Button>
 				{/snippet}

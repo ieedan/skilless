@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import RiCodeSSlashLine from 'remixicon-svelte/icons/code-s-slash-line';
+	import RiSettings3Line from 'remixicon-svelte/icons/settings-3-line';
+	import RiUser3Line from 'remixicon-svelte/icons/user-3-line';
+	import { afterNavigate } from '$app/navigation';
+	import * as Sidebar from '$lib/components/ui/sidebar';
 	import Avatar from './avatar.svelte';
 	import Logo from './logo.svelte';
 
@@ -8,49 +13,55 @@
 	let { user }: { user: AppUser } = $props();
 
 	const links = [
-		{ href: '/skills', label: 'Skills', icon: 'ri-code-s-slash-line' },
-		{ href: '/tokens', label: 'Tokens', icon: 'ri-key-2-line' }
+		{ href: '/skills', label: 'Skills', icon: RiCodeSSlashLine },
+		{ href: '/settings', label: 'Settings', icon: RiSettings3Line },
+		{ href: '/account', label: 'Account', icon: RiUser3Line }
 	];
 
-	const onAccount = $derived(page.url.pathname.startsWith('/account'));
+	const sidebar = Sidebar.useSidebar();
+
+	// on mobile the sidebar is a sheet over the page; picking somewhere to go should put it away
+	afterNavigate(() => sidebar.setOpenMobile(false));
 </script>
 
-<aside class="flex w-60 shrink-0 flex-col justify-between px-4 py-5.5">
-	<div class="flex flex-col gap-7">
-		<a href="/skills" class="flex px-3 py-1">
+<Sidebar.Root>
+	<Sidebar.Header class="px-4 py-0">
+		<a href="/skills" class="flex h-14 items-center px-3">
 			<Logo class="h-3.5" />
 		</a>
+	</Sidebar.Header>
 
-		<nav class="flex flex-col gap-0.5">
+	<Sidebar.Content class="px-4 pt-4">
+		<Sidebar.Menu class="gap-0.5">
 			{#each links as link (link.href)}
+				{@const Icon = link.icon}
 				{@const active = page.url.pathname.startsWith(link.href)}
-				<a
-					href={link.href}
-					aria-current={active ? 'page' : undefined}
-					class="flex items-center gap-2.5 px-3 py-2 text-sm transition-colors {active
-						? 'bg-secondary text-foreground'
-						: 'text-muted-foreground hover:text-foreground'}"
-				>
-					<i class="{link.icon} text-base leading-none" aria-hidden="true"></i>
-					{link.label}
-				</a>
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton isActive={active}>
+						{#snippet child({ props })}
+							<a href={link.href} aria-current={active ? 'page' : undefined} {...props}>
+								<Icon aria-hidden="true" />
+								<span>{link.label}</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
 			{/each}
-		</nav>
-	</div>
+		</Sidebar.Menu>
+	</Sidebar.Content>
 
-	<a
-		href="/account"
-		aria-current={onAccount ? 'page' : undefined}
-		class="flex items-center gap-2.5 p-2 transition-colors {onAccount
-			? 'bg-secondary'
-			: 'hover:bg-secondary/50'}"
-	>
-		<Avatar seed={user.seed} size={28} />
-		<span class="flex min-w-0 flex-col">
-			<span class="truncate text-[13px] text-card-foreground">{user.name}</span>
-			{#if user.subtitle}
-				<span class="truncate font-mono text-xs text-muted-foreground">{user.subtitle}</span>
-			{/if}
-		</span>
-	</a>
-</aside>
+	<Sidebar.Footer class="px-4 pb-4">
+		<a
+			href="/account"
+			class="flex items-center gap-2.5 rounded-lg p-2 transition-colors hover:bg-sidebar-accent/50"
+		>
+			<Avatar seed={user.seed} size={28} />
+			<span class="flex min-w-0 flex-col">
+				<span class="truncate text-[13px] text-card-foreground">{user.name}</span>
+				{#if user.subtitle}
+					<span class="truncate text-xs text-muted-foreground">{user.subtitle}</span>
+				{/if}
+			</span>
+		</a>
+	</Sidebar.Footer>
+</Sidebar.Root>

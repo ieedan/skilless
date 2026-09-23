@@ -1,18 +1,17 @@
 import { Command } from 'commander';
 import { z } from 'zod';
+import { SkillessError } from '@/utils/errors';
 import * as fsu from '@/utils/fs';
+import { flush, readLibrary } from '@/utils/library';
 import { skillDir } from '@/utils/paths';
+import { queueDelete } from '@/utils/pending';
+import { dropSources } from '@/utils/sources';
 import * as project from '@/utils/project';
-import { confirm, log } from '@/utils/prompts';
+import { confirm, log, spin } from '@/utils/prompts';
+import { Remote } from '@/utils/remote';
 import { readState, writeState } from '@/utils/state';
 import { VERSION } from '@/utils/version';
-import {
-	commonOptions,
-	defaultCommandOptionsSchema,
-	parseOptions,
-	requireApi,
-	tryCommand
-} from './utils';
+import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
 	yes: z.boolean()
@@ -32,7 +31,19 @@ export const deleteCommand = new Command('delete')
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const api = requireApi();
+			const remote = new Remote();
+			const library = await spin('Loading your library', async () => {
+				await flush(remote);
+				return readLibrary(remote);
+			});
+			const known = new Set(library.entries.map((skill) => skill.name));
+			const unknown = names.filter((name) => !known.has(name));
+
+			if (unknown.length > 0) {
+				throw new SkillessError(`Not in your library: ${unknown.join(', ')}`, {
+					suggestion: 'Run `skilless list` to see what you have.'
+				});
+			}
 
 			log.warn(`This deletes ${names.join(', ')} from every project, on every machine.`);
 			log.dim(
@@ -48,11 +59,15 @@ export const deleteCommand = new Command('delete')
 				return;
 			}
 
+			// queued before anything is removed here, so the deletion is never lost
+			// even if the server cannot hear about it yet
+			queueDelete(names);
+			dropSources(names);
+
 			const state = readState();
 			const root = project.projectRoot(options.cwd);
 
 			for (const name of names) {
-				await api.deleteSkill(name);
 				fsu.remove(skillDir(name));
 				delete state.skills[name];
 
@@ -61,9 +76,14 @@ export const deleteCommand = new Command('delete')
 
 			writeState(state);
 			project.unmaterialize(root, names);
+			project.unmaterialize(project.userScope(), names);
+
+			await spin('Deleting from skilless.dev', () => flush(remote));
 
 			log.blank();
 			log.dim('Other checkouts will clean up on their next `skilless install`.');
 			log.dim('Restore at skilless.dev/skills within 30 days.');
+
+			remote.report();
 		});
 	});

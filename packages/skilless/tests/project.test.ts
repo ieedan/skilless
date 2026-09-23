@@ -143,7 +143,7 @@ describe('materialize', () => {
 		expect(fs.existsSync(path.join(theirs, 'SKILL.md'))).toBe(true);
 
 		const result = project.materialize(repo, [{ name: 'theirs' }], { copy: false });
-		expect(result.skipped).toEqual([{ name: 'theirs', reason: 'occupied' }]);
+		expect(result.skipped).toMatchObject([{ name: 'theirs', reason: 'occupied' }]);
 		expect(fs.readFileSync(path.join(theirs, 'SKILL.md'), 'utf8')).toBe('# theirs\n');
 	});
 
@@ -180,7 +180,8 @@ describe('worktrees', () => {
 
 		// .git is a file here — a hardcoded .git/info/exclude would write nowhere
 		expect(fs.lstatSync(path.join(worktree, '.git')).isFile()).toBe(true);
-		expect(exclude).toBe(path.join(repo, '.git', 'info', 'exclude'));
+		// resolved, since git hands back forward slashes even on Windows
+		expect(path.resolve(exclude!)).toBe(path.join(repo, '.git', 'info', 'exclude'));
 	});
 
 	it('keeps a worktree clean too', async () => {

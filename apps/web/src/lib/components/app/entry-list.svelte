@@ -4,21 +4,39 @@
 	import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
+	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiFileCopyLine from 'remixicon-svelte/icons/file-copy-line';
+	import RiFolder3Fill from 'remixicon-svelte/icons/folder-3-fill';
+	import RiFolderOpenLine from 'remixicon-svelte/icons/folder-open-line';
+	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
+	import RiPencilLine from 'remixicon-svelte/icons/pencil-line';
 	import FileIcon from './file-icon.svelte';
+	import { copyText } from '$lib/hooks/use-clipboard.svelte';
+	import { toast } from 'svelte-sonner';
 
-	let { entries, base }: { entries: Entry[]; base: string } = $props();
+	let {
+		entries,
+		contents,
+		base
+	}: {
+		entries: Entry[];
+		/** Streamed in after the page renders (see readContents); only copying waits on it. */
+		contents: Promise<Record<string, string>>;
+		base: string;
+	} = $props();
 
-	let copied = $state<string | null>(null);
-
-	async function copy(path: string, contents: string) {
+	async function copy(path: string) {
+		// a menu item, not a button, so it shares CopyButton's clipboard logic rather than the component
 		try {
-			await navigator.clipboard.writeText(contents);
-			copied = path;
-			setTimeout(() => (copied = null), 1500);
+			const text = (await contents)[path];
+			if (text !== undefined && (await copyText(text)) === 'success') {
+				toast.success('Copied contents');
+				return;
+			}
 		} catch {
-			// clipboard unavailable (insecure origin, denied permission) — the file
-			// is one click away in the editor
+			// falls through to the error toast
 		}
+		toast.error('Could not copy the contents');
 	}
 </script>
 
@@ -30,15 +48,12 @@
 {:else}
 	<ul class="divide-y divide-border">
 		{#each entries as entry (entry.path)}
-			<li class="relative flex items-center justify-between gap-4 px-6 py-3.5">
-				<a
-					href="{base}/{entry.path}"
-					class="flex min-w-0 flex-1 items-center gap-3 font-mono text-sm"
-				>
+			<li class="relative flex items-center justify-between gap-4 px-2 py-3.5 md:px-6">
+				<a href="{base}/{entry.path}" class="flex min-w-0 flex-1 items-center gap-3 text-sm">
 					<span class="absolute inset-0" aria-hidden="true"></span>
 
 					{#if entry.kind === 'directory'}
-						<i class="ri-folder-3-fill shrink-0 text-base leading-none text-sky-300/80"></i>
+						<RiFolder3Fill class="size-4 shrink-0 text-sky-500 dark:text-sky-300/80" />
 					{:else}
 						<FileIcon path={entry.path} />
 					{/if}
@@ -53,11 +68,7 @@
 					{/if}
 				</a>
 
-				<div class="relative flex shrink-0 items-center gap-2">
-					{#if copied === entry.path}
-						<span class="text-xs text-muted-foreground">Copied</span>
-					{/if}
-
+				<div class="relative flex shrink-0 items-center">
 					<DropdownMenu.Root>
 						<DropdownMenu.Trigger>
 							{#snippet child({ props })}
@@ -67,7 +78,7 @@
 									size="icon-sm"
 									aria-label="Actions for {entry.name}"
 								>
-									<i class="ri-more-fill text-base leading-none text-muted-foreground"></i>
+									<RiMoreFill class="text-muted-foreground" />
 								</Button>
 							{/snippet}
 						</DropdownMenu.Trigger>
@@ -77,10 +88,10 @@
 								{#snippet child({ props })}
 									<a {...props} href="{base}/{entry.path}">
 										{#if entry.kind === 'directory'}
-											<i class="ri-folder-open-line"></i>
+											<RiFolderOpenLine />
 											Open
 										{:else}
-											<i class="ri-pencil-line"></i>
+											<RiPencilLine />
 											Edit
 										{/if}
 									</a>
@@ -88,8 +99,8 @@
 							</DropdownMenu.Item>
 
 							{#if entry.kind === 'file'}
-								<DropdownMenu.Item onSelect={() => copy(entry.path, entry.contents)}>
-									<i class="ri-file-copy-line"></i>
+								<DropdownMenu.Item onSelect={() => copy(entry.path)}>
+									<RiFileCopyLine />
 									Copy contents
 								</DropdownMenu.Item>
 							{/if}
@@ -111,7 +122,7 @@
 										onConfirm: () => submitAction('?/deletePath', { path: entry.path })
 									})}
 							>
-								<i class="ri-delete-bin-line"></i>
+								<RiDeleteBinLine />
 								Delete
 							</DropdownMenu.Item>
 						</DropdownMenu.Content>

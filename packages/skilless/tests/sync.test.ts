@@ -8,7 +8,7 @@ function local(name: string, hash: string, editedAt = 1000): LocalSkill {
 }
 
 function remote(name: string, hash: string, editedAt = 1000): RemoteSkill {
-	return { name, contentHash: hash, editedAt, updatedAt: editedAt, global: false };
+	return { name, contentHash: hash, editedAt, updatedAt: editedAt, global: false, source: null };
 }
 
 function state(entries: Record<string, string>): State {

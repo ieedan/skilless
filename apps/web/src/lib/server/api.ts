@@ -1,9 +1,9 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { api as convex } from '@skilless/platform';
-import { SecretClient } from '@skilless/platform/client';
+import { fetchFiles, SecretClient } from '@skilless/platform/client';
 import { ConvexHttpClient } from 'convex/browser';
 import { env } from '$lib/env.server';
-import { containsNul, hashFiles, hashToken, type SkillFile } from './hash';
+import { containsNul, hashToken, type SkillFile } from './hash';
 
 const MAX_SKILL_BYTES = 1024 * 1024;
 
@@ -16,6 +16,17 @@ const FileSchema = z
 	})
 	.openapi('SkillFile');
 
+const SourceSchema = z
+	.object({
+		url: z.string().min(1),
+		ref: z.string().optional(),
+		/** The skill's directory inside the repo. Empty for the repo root. */
+		path: z.string(),
+		/** The upstream contentHash as of the last add or update. */
+		hash: z.string()
+	})
+	.openapi('SkillSource');
+
 const SkillSchema = z
 	.object({
 		name: z.string(),
@@ -23,7 +34,9 @@ const SkillSchema = z
 		editedAt: z.number(),
 		updatedAt: z.number(),
 		/** Global skills are returned for every project, bound or not. */
-		global: z.boolean()
+		global: z.boolean(),
+		/** The git repository this skill was copied from, when it was. */
+		source: SourceSchema.nullable()
 	})
 	.openapi('Skill');
 
@@ -44,6 +57,7 @@ type SkillDoc = {
 	editedAt: number;
 	updatedAt: number;
 	global?: boolean;
+	source?: z.infer<typeof SourceSchema>;
 };
 
 /** Never hand back `_id` or `userId` — the CLI has no use for them. */
@@ -53,7 +67,8 @@ function toSkill(doc: SkillDoc) {
 		contentHash: doc.contentHash,
 		editedAt: doc.editedAt,
 		updatedAt: doc.updatedAt,
-		global: doc.global ?? false
+		global: doc.global ?? false,
+		source: doc.source ?? null
 	};
 }
 
@@ -142,14 +157,14 @@ app.openapi(
 		}
 	}),
 	async (c) => {
-		const skill = await c.get('convex').query(convex.skills.getFor, {
+		const [found] = await c.get('convex').query(convex.links.readFor, {
 			userId: c.get('userId'),
-			name: c.req.valid('param').name
+			names: [c.req.valid('param').name]
 		});
 
-		if (!skill) return c.json(null, 200);
+		if (!found) return c.json(null, 200);
 
-		return c.json({ ...toSkill(skill), files: skill.files }, 200);
+		return c.json({ ...toSkill(found.skill), files: await fetchFiles(found.files) }, 200);
 	}
 );
 
@@ -190,12 +205,11 @@ app.openapi(
 		const problem = validateFiles(files);
 		if (problem) return c.json({ error: 'invalid_skill', message: problem }, 400);
 
-		const skill = await c.get('convex').mutation(convex.skills.upsertFor, {
+		// the hash is recomputed by Convex, never taken on trust from the client
+		const skill = await c.get('convex').action(convex.files.upsertFor, {
 			userId: c.get('userId'),
 			name,
 			files,
-			// recomputed here, never taken on trust from the client
-			contentHash: hashFiles(files),
 			editedAt
 		});
 
@@ -259,6 +273,40 @@ app.openapi(
 	}
 );
 
+app.openapi(
+	createRoute({
+		method: 'put',
+		path: '/api/v1/skills/{name}/source',
+		tags: ['skills'],
+		summary: 'Record the git repository a skill came from, or forget it.',
+		description:
+			'Kept apart from the skill content, so pushing an edit never clears it. Read by `skilless update`.',
+		request: {
+			params: z.object({ name: z.string() }),
+			body: {
+				content: {
+					'application/json': { schema: z.object({ source: SourceSchema.nullable() }) }
+				}
+			}
+		},
+		responses: {
+			200: {
+				content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+				description: 'Updated.'
+			}
+		}
+	}),
+	async (c) => {
+		await c.get('convex').mutation(convex.skills.setSourceFor, {
+			userId: c.get('userId'),
+			name: c.req.valid('param').name,
+			source: c.req.valid('json').source
+		});
+
+		return c.json({ ok: true }, 200);
+	}
+);
+
 /* --------------------------------------------------------------- projects */
 
 /**
@@ -280,15 +328,24 @@ app.openapi(
 		}
 	}),
 	async (c) => {
-		const skills = await c.get('convex').query(convex.projects.boundFor, {
+		const bound = await c.get('convex').query(convex.projects.boundFor, {
 			userId: c.get('userId'),
 			key: c.req.valid('query').key
 		});
 
-		return c.json(
-			skills.map((skill) => ({ ...toSkill(skill), files: skill.files })),
-			200
+		// a skill trashed between the two calls comes back null, and is simply not installed
+		const found = await c.get('convex').query(convex.links.readFor, {
+			userId: c.get('userId'),
+			names: bound.map((skill) => skill.name)
+		});
+
+		const skills = await Promise.all(
+			found.flatMap((entry) =>
+				entry ? [fetchFiles(entry.files).then((files) => ({ ...toSkill(entry.skill), files }))] : []
+			)
 		);
+
+		return c.json(skills, 200);
 	}
 );
 

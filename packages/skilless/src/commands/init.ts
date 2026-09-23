@@ -1,14 +1,17 @@
 import { Command } from 'commander';
 import { getToken } from '@/utils/auth';
 import * as fsu from '@/utils/fs';
-import { login } from '@/utils/login';
 import { SKILLESS_DIR, SKILLS_DIR } from '@/utils/paths';
-import { confirm, log } from '@/utils/prompts';
+import { log } from '@/utils/prompts';
 import { VERSION } from '@/utils/version';
 import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
 
+/**
+ * Local first: the library works on its own, so signing in is left to
+ * `skilless auth` for whoever wants their skills synced.
+ */
 export const init = new Command('init')
-	.description('Create the local skilless directory and sign in.')
+	.description('Create the local skilless directory.')
 	.addOption(commonOptions.cwd)
 	.action(async (raw) => {
 		parseOptions(defaultCommandOptionsSchema, raw);
@@ -20,20 +23,9 @@ export const init = new Command('init')
 
 			log.step(`${fresh ? 'Created' : 'Found'} your library at ${SKILLESS_DIR}.`);
 
-			if (getToken()) {
-				const again = await confirm('You are already signed in. Sign in again?', false);
-				if (!again) {
-					log.blank();
-					log.dim('Run `skilless create <name>` to make a skill.');
-					return;
-				}
-			}
-
-			await login();
-
-			log.step('Signed in to skilless.dev.');
 			log.blank();
 			log.dim('Run `skilless create <name>` to make a skill.');
-			log.dim('Run `skilless add <skill>` to add one you already have.');
+			log.dim('Run `skilless import <dir>` to bring in skills you already have.');
+			if (!getToken()) log.dim('Run `skilless auth` to sync your skills with the cloud.');
 		});
 	});

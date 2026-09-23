@@ -28,6 +28,11 @@ export default defineConfig({
 		]
 	},
 	ssr: {
-		noExternal: ['@skilless/platform']
+		/**
+		 * svelte-sonner ships raw `.svelte` files. vite-plugin-svelte normally
+		 * spots that and bundles it, but not reliably here, and Node cannot import
+		 * `.svelte`: every SSR request 500s with ERR_UNKNOWN_FILE_EXTENSION.
+		 */
+		noExternal: ['@skilless/platform', 'svelte-sonner']
 	}
 });

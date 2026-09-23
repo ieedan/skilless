@@ -76,7 +76,7 @@ export function readSkill(dir: string, name: string): LocalSkill {
 		bytes += buffer.byteLength;
 		if (bytes > MAX_SKILL_BYTES) {
 			throw new SkillessError(`${name} is larger than 1MB.`, {
-				suggestion: 'Skills are prose — move large assets out of the skill directory.'
+				suggestion: 'Skills are prose. Move large assets out of the skill directory.'
 			});
 		}
 

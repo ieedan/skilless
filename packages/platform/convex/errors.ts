@@ -32,6 +32,21 @@ export const convexError = errf.create({
 		message: 'Skill name taken',
 		userMessage: 'Rename the existing skill before restoring this one'
 	},
+	SkillChanged: {
+		code: 'SKILL_CHANGED',
+		message: 'Skill changed during write',
+		userMessage: 'That skill changed while saving, please try again'
+	},
+	SkillTooLarge: {
+		code: 'SKILL_TOO_LARGE',
+		message: 'Skill too large',
+		userMessage: 'Skills are limited to 1MB'
+	},
+	SkillFileNotText: {
+		code: 'SKILL_FILE_NOT_TEXT',
+		message: 'Skill file not text',
+		userMessage: 'Skill files must be text'
+	},
 	ProjectNotFound: {
 		code: 'PROJECT_NOT_FOUND',
 		message: 'Project not found',

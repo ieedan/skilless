@@ -1,9 +1,13 @@
 import { v } from 'convex/values';
-import { convexError, createConvexError } from './errors';
+import { internalMutation, internalQuery } from './_generated/server';
 import * as model from './model';
+import { r2 } from './r2';
 import { mutation, query, requireUser, secretMutation, secretQuery } from './utils';
 
-const fileValidator = v.object({ path: v.string(), contents: v.string() });
+/*
+ * Writes that carry file contents are actions in `files.ts`, since contents go
+ * to R2 first. What is left here only touches rows.
+ */
 
 /* ---------------------------------------------------------------- website */
 
@@ -25,9 +29,12 @@ export const get = query({
 		const skill = await model.findSkill(ctx, user.subject, args.name);
 		if (!skill) return null;
 
+		const rows = await model.fileRows(ctx, skill._id);
+
 		return {
 			...skill,
-			files: await model.readFiles(ctx, skill._id),
+			/** Paths only. Contents come from `links:read`. */
+			files: rows.map((row) => ({ path: row.path })),
 			projects: await model.projectsForSkill(ctx, skill._id)
 		};
 	}
@@ -47,55 +54,6 @@ export const restore = mutation({
 	handler: async (ctx, args) => {
 		const userId = await requireUser(ctx);
 		await model.restoreSkill(ctx, userId, args.skillId);
-	}
-});
-
-/**
- * Writes one file back from the website.
- *
- * `contentHash` is computed by our own SvelteKit server over the whole file set
- * (see `$lib/server/hash`), exactly as the CLI does before calling the API —
- * the browser never supplies it.
- */
-export const writeFile = mutation({
-	args: {
-		name: v.string(),
-		path: v.string(),
-		contents: v.string(),
-		contentHash: v.string(),
-		editedAt: v.number()
-	},
-	handler: async (ctx, args) => {
-		const userId = await requireUser(ctx);
-		await model.writeSkillFile(ctx, { userId, ...args });
-	}
-});
-
-/** Deletes a file, or a whole directory, from a skill. */
-export const deletePath = mutation({
-	args: {
-		name: v.string(),
-		path: v.string(),
-		contentHash: v.string(),
-		editedAt: v.number()
-	},
-	handler: async (ctx, args) => {
-		const userId = await requireUser(ctx);
-		return await model.deleteSkillPath(ctx, { userId, ...args });
-	}
-});
-
-/** Creates a skill from the website. Fails if the name is taken. */
-export const create = mutation({
-	args: {
-		name: v.string(),
-		files: v.array(fileValidator),
-		contentHash: v.string(),
-		editedAt: v.number()
-	},
-	handler: async (ctx, args) => {
-		const userId = await requireUser(ctx);
-		await model.createSkill(ctx, { userId, ...args });
 	}
 });
 
@@ -124,31 +82,6 @@ export const listFor = secretQuery({
 	}
 });
 
-export const getFor = secretQuery({
-	args: { userId: v.string(), name: v.string() },
-	handler: async (ctx, args) => {
-		const skill = await model.findSkill(ctx, args.userId, args.name);
-		if (!skill) return null;
-		return { ...skill, files: await model.readFiles(ctx, skill._id) };
-	}
-});
-
-export const upsertFor = secretMutation({
-	args: {
-		userId: v.string(),
-		name: v.string(),
-		files: v.array(fileValidator),
-		contentHash: v.string(),
-		editedAt: v.number()
-	},
-	handler: async (ctx, args) => {
-		const skillId = await model.upsertSkill(ctx, args);
-		const skill = await ctx.db.get(skillId);
-		if (!skill) throw createConvexError(convexError.SkillNotFound());
-		return skill;
-	}
-});
-
 export const setGlobalFor = secretMutation({
 	args: { userId: v.string(), name: v.string(), global: v.boolean() },
 	handler: async (ctx, args) => {
@@ -156,9 +89,104 @@ export const setGlobalFor = secretMutation({
 	}
 });
 
+export const setSourceFor = secretMutation({
+	args: {
+		userId: v.string(),
+		name: v.string(),
+		source: v.union(
+			v.object({
+				url: v.string(),
+				ref: v.optional(v.string()),
+				path: v.string(),
+				hash: v.string()
+			}),
+			v.null()
+		)
+	},
+	handler: async (ctx, args) => {
+		await model.setSource(ctx, args.userId, args.name, args.source);
+	}
+});
+
 export const removeFor = secretMutation({
 	args: { userId: v.string(), name: v.string() },
 	handler: async (ctx, args) => {
 		await model.softDeleteSkill(ctx, args.userId, args.name);
+	}
+});
+
+/* --------------------------------------------------------------- internal */
+
+const storedFileValidator = v.object({
+	path: v.string(),
+	key: v.string(),
+	sha256: v.string(),
+	size: v.number()
+});
+
+/** What a write action starts from: the live skill's hash and file rows, or null. */
+export const snapshot = internalQuery({
+	args: { userId: v.string(), name: v.string() },
+	handler: async (ctx, args) => {
+		const skill = await model.findSkill(ctx, args.userId, args.name);
+		if (!skill) return null;
+
+		return { skill, files: await model.fileRows(ctx, skill._id) };
+	}
+});
+
+/** Every live skill with its SKILL.md row, for the frontmatter backfill. */
+export const allLive = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		const skills = await ctx.db.query('skills').collect();
+		const live = skills.filter((skill) => skill.deletedAt === undefined);
+
+		return await Promise.all(
+			live.map(async (skill) => ({
+				skill,
+				main: (await model.fileRows(ctx, skill._id)).find((row) => row.path === 'SKILL.md') ?? null
+			}))
+		);
+	}
+});
+
+export const setFrontmatter = internalMutation({
+	args: {
+		skillId: v.id('skills'),
+		title: v.optional(v.string()),
+		description: v.optional(v.string()),
+		metadata: v.optional(v.record(v.string(), v.any()))
+	},
+	handler: async (ctx, { skillId, ...frontmatter }) => {
+		await ctx.db.patch(skillId, frontmatter);
+	}
+});
+
+export const commit = internalMutation({
+	args: {
+		userId: v.string(),
+		name: v.string(),
+		create: v.boolean(),
+		basedOn: v.union(v.string(), v.null()),
+		files: v.array(storedFileValidator),
+		uploaded: v.array(v.string()),
+		contentHash: v.string(),
+		title: v.optional(v.string()),
+		description: v.optional(v.string()),
+		metadata: v.optional(v.record(v.string(), v.any())),
+		soleFile: v.optional(v.string()),
+		editedAt: v.number()
+	},
+	handler: async (ctx, args) => {
+		return await model.commitSkill(ctx, args);
+	}
+});
+
+/** Drops objects a failed write uploaded but never committed. */
+export const discard = internalMutation({
+	args: { keys: v.array(v.string()) },
+	handler: async (ctx, args) => {
+		for (const key of args.keys) await r2.deleteObject(ctx, key);
 	}
 });

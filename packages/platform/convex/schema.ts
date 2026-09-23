@@ -8,15 +8,31 @@ export default defineSchema({
 		name: v.string(),
 		/** sha256 over the sorted (path, contents) pairs. Recomputed server side, never trusted. */
 		contentHash: v.string(),
+		/*
+		 * SKILL.md frontmatter, parsed on every write so nothing that shows a skill
+		 * has to read its files. `title` is the `name` field, which can differ from
+		 * the name the skill is stored under; `metadata` is every other field.
+		 */
+		title: v.optional(v.string()),
+		description: v.optional(v.string()),
+		metadata: v.optional(v.record(v.string(), v.any())),
+		/** The one file's path, when a skill has exactly one. */
+		soleFile: v.optional(v.string()),
 		/** Client reported max file mtime. The last-write-wins tiebreak. */
 		editedAt: v.number(),
 		/** Global skills are resolved into every project, without being bound to any. */
 		global: v.optional(v.boolean()),
-		/** Reserved for marketplace provenance. Unused in v0. */
+		/**
+		 * The git repository a skill was copied from by `skilless add <repo>`, so
+		 * `skilless update` can refresh it. `hash` is the upstream contentHash as
+		 * of the last add or update — equal to `contentHash` until someone edits.
+		 */
 		source: v.optional(
 			v.object({
-				marketplace: v.string(),
-				id: v.string(),
+				url: v.string(),
+				ref: v.optional(v.string()),
+				/** The skill's directory inside the repo. Empty for the repo root. */
+				path: v.string(),
 				hash: v.string()
 			})
 		),
@@ -27,10 +43,19 @@ export default defineSchema({
 		.index('by_user_and_name', ['userId', 'name'])
 		.index('by_user', ['userId']),
 
+	/**
+	 * One file of a skill. The contents live in R2 under `key`; this row is only
+	 * the path and enough to avoid re-uploading a file that has not changed.
+	 */
 	skillFiles: defineTable({
 		skillId: v.id('skills'),
 		path: v.string(),
-		contents: v.string()
+		/** R2 object key. Owned by this skill, never shared with another. */
+		key: v.string(),
+		/** sha256 of the contents, so an unchanged file keeps its object. */
+		sha256: v.string(),
+		/** Bytes, UTF-8. */
+		size: v.number()
 	}).index('by_skill', ['skillId']),
 
 	/** A project, keyed by its normalized git remote e.g. `github.com/ieedan/layerchart`. */
@@ -58,5 +83,12 @@ export default defineSchema({
 		lastUsedAt: v.optional(v.number())
 	})
 		.index('by_hash', ['hash'])
-		.index('by_user', ['userId'])
+		.index('by_user', ['userId']),
+
+	/** Per-user display settings. At most one row per user; absent means all defaults. */
+	preferences: defineTable({
+		userId: v.string(),
+		/** Keeps the email out of the sidebar and account page, e.g. while screen sharing. */
+		hideEmail: v.optional(v.boolean())
+	}).index('by_user', ['userId'])
 });

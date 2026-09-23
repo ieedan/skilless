@@ -1,9 +1,10 @@
 import { api } from '@skilless/platform';
 import { fail } from '@sveltejs/kit';
+import { convexLoad } from 'convex-svelte/sveltekit';
 import { hashToken, mintToken } from '$lib/server/hash';
 
-export async function load({ locals }) {
-	return { tokens: await locals.convex.query(api.tokens.list, {}) };
+export async function load() {
+	return { tokens: await convexLoad(api.tokens.list, {}) };
 }
 
 export const actions = {

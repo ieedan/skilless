@@ -48,8 +48,9 @@
 		'&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
 			backgroundColor: 'var(--secondary)'
 		},
+		// opaque, matching the panel, so code scrolled sideways passes under the numbers
 		'.cm-gutters': {
-			backgroundColor: 'transparent',
+			backgroundColor: 'var(--card)',
 			color: 'var(--muted-foreground)',
 			border: 'none',
 			paddingRight: '16px',

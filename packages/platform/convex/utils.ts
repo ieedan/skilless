@@ -1,9 +1,9 @@
-import { customMutation, customQuery } from 'convex-helpers/server/customFunctions';
-import type { GenericActionCtx, GenericQueryCtx } from 'convex/server';
+import { customAction, customMutation, customQuery } from 'convex-helpers/server/customFunctions';
+import type { Auth, GenericActionCtx, GenericQueryCtx } from 'convex/server';
 import { v } from 'convex/values';
 import { env } from '../env.convex';
 import type { DataModel } from './_generated/dataModel';
-import { mutation, query } from './_generated/server';
+import { action, mutation, query } from './_generated/server';
 import { convexError, createConvexError } from './errors';
 
 /**
@@ -20,6 +20,11 @@ export const secretMutation = customMutation(mutation, {
 	input: verifySecret
 });
 
+export const secretAction = customAction(action, {
+	args: { secret: v.string() },
+	input: verifySecret
+});
+
 function verifySecret<
 	QueryContext extends GenericQueryCtx<DataModel> | GenericActionCtx<DataModel>
 >(ctx: QueryContext, args: { secret: string }) {
@@ -30,10 +35,10 @@ function verifySecret<
 }
 
 /** Resolves the signed in user, throwing if there isn't one. */
-export async function requireUser(ctx: GenericQueryCtx<DataModel>): Promise<string> {
+export async function requireUser(ctx: { auth: Auth }): Promise<string> {
 	const user = await ctx.auth.getUserIdentity();
 	if (!user) throw createConvexError(convexError.Unauthorized());
 	return user.subject;
 }
 
-export { mutation, query };
+export { action, mutation, query };

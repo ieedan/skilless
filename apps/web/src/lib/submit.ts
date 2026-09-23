@@ -9,10 +9,19 @@ import type { ActionResult } from '@sveltejs/kit';
  * spinner running until it resolves, which `use:enhance` cannot give us — it
  * owns the submission. So we submit by hand, the way SvelteKit documents for
  * custom handling, and await the resulting invalidation.
+ *
+ * `keepFocus` skips `applyAction` on success. It resets focus the way a
+ * navigation would, which closes any open menu — wrong for a checkbox you
+ * expect to toggle a few of in a row.
+ *
+ * `invalidate: false` skips the reload for pages fed by live `convexLoad`
+ * queries: the subscription already delivers the change, and re-running the
+ * load would open another subscription that is never torn down.
  */
 export async function submitAction(
 	action: string,
-	fields: Record<string, string>
+	fields: Record<string, string>,
+	{ keepFocus = false, invalidate = true }: { keepFocus?: boolean; invalidate?: boolean } = {}
 ): Promise<ActionResult> {
 	const body = new FormData();
 	for (const [name, value] of Object.entries(fields)) body.append(name, value);
@@ -31,8 +40,8 @@ export async function submitAction(
 		return result;
 	}
 
-	await applyAction(result);
-	if (result.type === 'success') await invalidateAll();
+	if (!(keepFocus && result.type === 'success')) await applyAction(result);
+	if (invalidate && result.type === 'success') await invalidateAll();
 
 	return result;
 }

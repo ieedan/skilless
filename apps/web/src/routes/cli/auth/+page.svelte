@@ -49,7 +49,7 @@
 		<h1 class="text-lg font-semibold">You're signed in.</h1>
 		<p class="text-sm text-neutral-400">You can close this tab and go back to your terminal.</p>
 	{:else if status === 'failed' && form?.token}
-		<h1 class="text-lg font-semibold">Almost — paste this in your terminal.</h1>
+		<h1 class="text-lg font-semibold">Almost there. Paste this in your terminal.</h1>
 		<p class="max-w-md text-sm text-neutral-400">
 			Your browser wouldn't let this page reach the CLI, so copy the token instead:
 		</p>

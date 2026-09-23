@@ -28,8 +28,20 @@ export function ensureDir(dir: string): void {
 	fs.mkdirSync(dir, { recursive: true });
 }
 
+/** Removes a link without ever following it into what it points at. */
 export function remove(target: string): void {
 	if (!exists(target)) return;
+
+	if (isSymlink(target)) {
+		try {
+			fs.unlinkSync(target);
+		} catch {
+			// a directory symlink or junction on Windows has to go as a directory
+			fs.rmdirSync(target);
+		}
+		return;
+	}
+
 	fs.rmSync(target, { recursive: true, force: true });
 }
 

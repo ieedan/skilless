@@ -41,6 +41,7 @@
 		"@types/node": "catalog:",
 		"commander": "catalog:",
 		"enquirer": "^2.4.1",
+		"ora": "^9.4.1",
 		"pathe": "catalog:",
 		"picocolors": "catalog:",
 		"tsdown": "catalog:",

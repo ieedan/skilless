@@ -1,15 +1,24 @@
 import { z } from 'zod';
-import { NotAuthenticatedError, SkillessError } from '@/utils/errors';
-import type { RemoteSkill, RemoteSkillWithFiles, SkillFile } from '@/utils/types';
+import { NotAuthenticatedError, OfflineError, SkillessError } from '@/utils/errors';
+import type { RemoteSkill, RemoteSkillWithFiles, SkillFile, SkillSource } from '@/utils/types';
 
 const fileSchema = z.object({ path: z.string(), contents: z.string() });
+
+const sourceSchema = z.object({
+	url: z.string(),
+	ref: z.string().optional(),
+	path: z.string(),
+	hash: z.string()
+});
 
 const skillSchema = z.object({
 	name: z.string(),
 	contentHash: z.string(),
 	editedAt: z.number(),
 	updatedAt: z.number(),
-	global: z.boolean()
+	global: z.boolean(),
+	// absent from servers that predate sources
+	source: sourceSchema.nullable().default(null)
 });
 
 const skillWithFilesSchema = skillSchema.extend({ files: z.array(fileSchema) });
@@ -24,6 +33,21 @@ const errorSchema = z.object({
 	message: z.string().optional()
 });
 
+/** How many times a request is sent before the server counts as unreachable. */
+const ATTEMPTS = 2;
+const RETRY_DELAY_MS = 500;
+const TIMEOUT_MS = 10_000;
+
+const UNREACHABLE_STATUSES = new Set([502, 503, 504]);
+
+function parseJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Talks to the skilless.dev API. The CLI never reaches Convex directly — the API
  * is the contract, and it is the same one documented at /api/v1/openapi.json.
@@ -31,10 +55,62 @@ const errorSchema = z.object({
 export class ApiClient {
 	readonly #token: string;
 	readonly #baseUrl: string;
+	#offline = false;
 
 	constructor(token: string, baseUrl: string) {
 		this.#token = token;
 		this.#baseUrl = baseUrl;
+	}
+
+	get baseUrl(): string {
+		return this.#baseUrl;
+	}
+
+	/**
+	 * Sends a request, trying twice before calling the server unreachable. Once
+	 * it is, every later request fails straight away — one command should not
+	 * wait out the timeout over and over.
+	 */
+	async #send(
+		method: string,
+		endpoint: string,
+		body?: unknown
+	): Promise<{ status: number; text: string }> {
+		if (this.#offline) throw new OfflineError(this.#baseUrl);
+
+		let lastCause: unknown;
+
+		for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+			if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+
+			try {
+				const response = await fetch(`${this.#baseUrl}/api/v1${endpoint}`, {
+					method,
+					headers: {
+						Authorization: `Bearer ${this.#token}`,
+						...(body === undefined ? {} : { 'Content-Type': 'application/json' })
+					},
+					body: body === undefined ? undefined : JSON.stringify(body),
+					signal: AbortSignal.timeout(TIMEOUT_MS)
+				});
+
+				// the body is read inside the timeout too, or a stalled connection hangs here
+				const text = await response.text();
+
+				// a proxy in front of a server that is down — no different from no server
+				if (UNREACHABLE_STATUSES.has(response.status)) {
+					lastCause = new Error(`${method} ${endpoint} returned ${response.status}.`);
+					continue;
+				}
+
+				return { status: response.status, text };
+			} catch (cause) {
+				lastCause = cause;
+			}
+		}
+
+		this.#offline = true;
+		throw new OfflineError(this.#baseUrl, lastCause);
 	}
 
 	async #request<T>(
@@ -43,28 +119,12 @@ export class ApiClient {
 		schema: z.ZodType<T>,
 		body?: unknown
 	): Promise<T> {
-		let response: Response;
-
-		try {
-			response = await fetch(`${this.#baseUrl}/api/v1${endpoint}`, {
-				method,
-				headers: {
-					Authorization: `Bearer ${this.#token}`,
-					...(body === undefined ? {} : { 'Content-Type': 'application/json' })
-				},
-				body: body === undefined ? undefined : JSON.stringify(body)
-			});
-		} catch (cause) {
-			throw new SkillessError(`Could not reach ${this.#baseUrl}.`, {
-				suggestion: 'Check your connection, or set SKILLESS_API_URL to point elsewhere.',
-				cause
-			});
-		}
+		const response = await this.#send(method, endpoint, body);
 
 		if (response.status === 401) throw new NotAuthenticatedError();
 
-		if (!response.ok) {
-			const parsed = errorSchema.safeParse(await response.json().catch(() => null));
+		if (response.status < 200 || response.status >= 300) {
+			const parsed = errorSchema.safeParse(parseJson(response.text));
 
 			throw new SkillessError(
 				parsed.success
@@ -75,12 +135,11 @@ export class ApiClient {
 
 		if (response.status === 204) return schema.parse(undefined);
 
-		const json = await response.json();
-		const parsed = schema.safeParse(json);
+		const parsed = schema.safeParse(parseJson(response.text));
 
 		if (!parsed.success) {
 			throw new SkillessError(`Unexpected response from ${method} ${endpoint}.`, {
-				suggestion: 'This is likely a version mismatch — try updating skilless.'
+				suggestion: 'This is likely a version mismatch. Try updating skilless.'
 			});
 		}
 
@@ -109,6 +168,12 @@ export class ApiClient {
 	async setGlobal(name: string, global: boolean): Promise<void> {
 		await this.#request('PUT', `/skills/${encodeURIComponent(name)}/global`, z.unknown(), {
 			global
+		});
+	}
+
+	async setSource(name: string, source: SkillSource | null): Promise<void> {
+		await this.#request('PUT', `/skills/${encodeURIComponent(name)}/source`, z.unknown(), {
+			source
 		});
 	}
 

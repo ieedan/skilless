@@ -1,6 +1,8 @@
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { convexError, createConvexError } from './errors';
+import { parse } from 'yaml';
+import { r2 } from './r2';
 
 export type SkillFile = { path: string; contents: string };
 
@@ -27,56 +29,90 @@ export async function listSkills(ctx: QueryCtx, userId: string): Promise<Doc<'sk
 	return rows.filter((r) => r.deletedAt === undefined).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * Pulls `description` out of a SKILL.md frontmatter block.
- *
- * Deliberately not a YAML parser: the frontmatter contract is two scalar keys,
- * and pulling in a parser to read them would cost more than it buys.
- */
-export function parseDescription(contents: string): string | undefined {
-	const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(contents);
-	if (!match) return undefined;
-
-	const line = /^description:[ \t]*(.*)$/m.exec(match[1]);
-	if (!line) return undefined;
-
-	const value = line[1]
-		.trim()
-		.replace(/^["'](.*)["']$/, '$1')
-		.trim();
-	return value.length > 0 ? value : undefined;
-}
-
-export type SkillSummary = Doc<'skills'> & {
+/** A SKILL.md frontmatter block as stored on the skill row. */
+export type Frontmatter = {
+	/** The `name` field, which can differ from the name the skill is stored under. */
+	title?: string;
 	description?: string;
-	/**
-	 * The one file, when a skill has exactly one. Lets the list link straight at
-	 * it instead of bouncing through the skill and being redirected.
-	 */
-	soleFile?: string;
+	/** Every other top level field, as written. */
+	metadata?: Record<string, unknown>;
 };
 
 /**
- * The website's skill list, which shows a description under each name.
- *
- * `description` lives in SKILL.md rather than on the row, so this reads one
- * file set per skill. Fine at a personal library's scale; if that stops being
- * true, denormalize it onto the skill at upsert time instead. `soleFile` rides
- * along on the same read and costs nothing extra.
+ * Reads the frontmatter out of a SKILL.md. Broken YAML reads as empty, since a
+ * hand-edited file should still save; it just loses its title and description.
  */
+export function parseFrontmatter(contents: string): Frontmatter {
+	const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(contents)?.[1];
+	if (!block) return {};
+
+	let parsed: unknown;
+	try {
+		parsed = parse(block);
+	} catch {
+		return {};
+	}
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+	const { name, description, ...rest } = toConvexValue(parsed) as Record<string, unknown>;
+	const text = (value: unknown) =>
+		typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+	return {
+		title: text(name),
+		description: text(description),
+		metadata: Object.keys(rest).length > 0 ? rest : undefined
+	};
+}
+
+/**
+ * YAML can hold things Convex cannot store: dates, and keys starting with `$`
+ * or `_`. Round trip through JSON for the former and drop the latter.
+ */
+function toConvexValue(value: unknown): unknown {
+	const walk = (node: unknown): unknown => {
+		if (Array.isArray(node)) return node.map(walk);
+		if (node && typeof node === 'object') {
+			return Object.fromEntries(
+				Object.entries(node)
+					.filter(([key]) => key.length > 0 && !/^[$_]/.test(key))
+					.map(([key, child]) => [key, walk(child)])
+			);
+		}
+		return node;
+	};
+	return walk(JSON.parse(JSON.stringify(value)));
+}
+
+/**
+ * What the website shows without opening the files, stored on the skill row
+ * by every write, which always has the whole file set in hand.
+ */
+export function summarize(files: SkillFile[]): Frontmatter & { soleFile?: string } {
+	const main = files.find((file) => file.path === 'SKILL.md');
+	return {
+		...(main ? parseFrontmatter(main.contents) : {}),
+		soleFile: files.length === 1 ? files[0].path : undefined
+	};
+}
+
+export type SkillSummary = Doc<'skills'> & {
+	/** Projects the skill is explicitly bound to. Globals reach every project regardless. */
+	projectIds: Id<'projects'>[];
+};
+
+/** The website's skill list. Reads only skill rows and bindings — never file contents. */
 export async function listSkillsForDisplay(ctx: QueryCtx, userId: string): Promise<SkillSummary[]> {
 	const skills = await listSkills(ctx, userId);
 
 	return await Promise.all(
 		skills.map(async (skill) => {
-			const files = await readFiles(ctx, skill._id);
-			const main = files.find((file) => file.path === 'SKILL.md');
+			const bindings = await ctx.db
+				.query('bindings')
+				.withIndex('by_skill', (q) => q.eq('skillId', skill._id))
+				.collect();
 
-			return {
-				...skill,
-				description: main ? parseDescription(main.contents) : undefined,
-				soleFile: files.length === 1 ? files[0].path : undefined
-			};
+			return { ...skill, projectIds: bindings.map((binding) => binding.projectId) };
 		})
 	);
 }
@@ -108,163 +144,105 @@ export async function setGlobal(
 	await ctx.db.patch(skill._id, { global: value });
 }
 
-export async function readFiles(ctx: QueryCtx, skillId: Id<'skills'>): Promise<SkillFile[]> {
-	const rows = await ctx.db
-		.query('skillFiles')
-		.withIndex('by_skill', (q) => q.eq('skillId', skillId))
-		.collect();
-
-	return rows
-		.map((r) => ({ path: r.path, contents: r.contents }))
-		.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-async function replaceFiles(ctx: MutationCtx, skillId: Id<'skills'>, files: SkillFile[]) {
-	const existing = await ctx.db
-		.query('skillFiles')
-		.withIndex('by_skill', (q) => q.eq('skillId', skillId))
-		.collect();
-
-	for (const row of existing) await ctx.db.delete(row._id);
-	for (const file of files) await ctx.db.insert('skillFiles', { skillId, ...file });
-}
-
-export async function upsertSkill(
+export async function setSource(
 	ctx: MutationCtx,
-	args: {
-		userId: string;
-		name: string;
-		files: SkillFile[];
-		contentHash: string;
-		editedAt: number;
-	}
-): Promise<Id<'skills'>> {
-	const existing = await findSkill(ctx, args.userId, args.name);
-	const now = Date.now();
-
-	if (existing) {
-		await ctx.db.patch(existing._id, {
-			contentHash: args.contentHash,
-			editedAt: args.editedAt,
-			updatedAt: now
-		});
-		await replaceFiles(ctx, existing._id, args.files);
-		return existing._id;
-	}
-
-	const skillId = await ctx.db.insert('skills', {
-		userId: args.userId,
-		name: args.name,
-		contentHash: args.contentHash,
-		editedAt: args.editedAt,
-		updatedAt: now
-	});
-	await replaceFiles(ctx, skillId, args.files);
-	return skillId;
-}
-
-/**
- * Replaces one file's contents in an existing skill.
- *
- * `editedAt` is supplied rather than derived: the CLI reports the file's mtime,
- * and a browser has none, so the caller decides. The website passes its own
- * clock, which makes a web save the newer edit against any CLI state older than
- * that moment — the same last-write-wins rule the CLI already plays by.
- */
-export async function writeSkillFile(
-	ctx: MutationCtx,
-	args: {
-		userId: string;
-		name: string;
-		path: string;
-		contents: string;
-		contentHash: string;
-		editedAt: number;
-	}
+	userId: string,
+	name: string,
+	source: Doc<'skills'>['source'] | null
 ): Promise<void> {
-	const skill = await findSkill(ctx, args.userId, args.name);
+	const skill = await findSkill(ctx, userId, name);
 	if (!skill) throw createConvexError(convexError.SkillNotFound());
 
-	const row = (
-		await ctx.db
-			.query('skillFiles')
-			.withIndex('by_skill', (q) => q.eq('skillId', skill._id))
-			.collect()
-	).find((f) => f.path === args.path);
-
-	if (!row) throw createConvexError(convexError.SkillFileNotFound());
-
-	await ctx.db.patch(row._id, { contents: args.contents });
-	await ctx.db.patch(skill._id, {
-		contentHash: args.contentHash,
-		editedAt: args.editedAt,
-		updatedAt: Date.now()
-	});
+	await ctx.db.patch(skill._id, { source: source ?? undefined });
 }
 
-/**
- * Removes a file, or every file beneath a directory prefix.
- *
- * Whether a skill may be left without a SKILL.md, or with no files at all, is
- * decided by the caller — the CLI can already produce either shape by upserting
- * a different file set, so enforcing it only here would just be inconsistent.
- */
-export async function deleteSkillPath(
-	ctx: MutationCtx,
-	args: {
-		userId: string;
-		name: string;
-		path: string;
-		contentHash: string;
-		editedAt: number;
-	}
-): Promise<number> {
-	const skill = await findSkill(ctx, args.userId, args.name);
-	if (!skill) throw createConvexError(convexError.SkillNotFound());
+/** Where one file's contents live. What a skill row points at, never the contents. */
+export type StoredFile = { path: string; key: string; sha256: string; size: number };
 
+/** Every file row of a skill, sorted by path. */
+export async function fileRows(ctx: QueryCtx, skillId: Id<'skills'>): Promise<Doc<'skillFiles'>[]> {
 	const rows = await ctx.db
 		.query('skillFiles')
-		.withIndex('by_skill', (q) => q.eq('skillId', skill._id))
+		.withIndex('by_skill', (q) => q.eq('skillId', skillId))
 		.collect();
 
-	const prefix = `${args.path}/`;
-	const doomed = rows.filter((row) => row.path === args.path || row.path.startsWith(prefix));
-
-	if (doomed.length === 0) throw createConvexError(convexError.SkillFileNotFound());
-
-	for (const row of doomed) await ctx.db.delete(row._id);
-
-	await ctx.db.patch(skill._id, {
-		contentHash: args.contentHash,
-		editedAt: args.editedAt,
-		updatedAt: Date.now()
-	});
-
-	return doomed.length;
+	return rows.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /**
- * Creates a skill, refusing to clobber one that already exists.
+ * Lands a new file set for a skill whose contents are already in R2.
  *
- * Distinct from `upsertSkill`, which the CLI uses to push whatever it has on
- * disk. Creating from the website is a first write, so a name collision is a
- * mistake rather than an update.
+ * The write actions in `files.ts` read the skill, upload what changed, then
+ * commit here. Anything that landed in between shows up as a moved `basedOn`
+ * hash, or a key that is neither ours already nor freshly uploaded, and throws
+ * `SkillChanged` so the action starts over from the new state instead of
+ * clobbering it.
+ *
+ * Objects the old file set used and the new one does not are deleted here, in
+ * the same transaction that stops pointing at them.
  */
-export async function createSkill(
+export async function commitSkill(
 	ctx: MutationCtx,
 	args: {
 		userId: string;
 		name: string;
-		files: SkillFile[];
+		/** Refuse to replace a live skill of the same name. */
+		create: boolean;
+		/** The `contentHash` the action read, or null if there was no skill. */
+		basedOn: string | null;
+		files: StoredFile[];
+		/** Keys the action uploaded for this commit. */
+		uploaded: string[];
 		contentHash: string;
+		title?: string;
+		description?: string;
+		metadata?: Record<string, unknown>;
+		soleFile?: string;
 		editedAt: number;
 	}
-): Promise<Id<'skills'>> {
-	if (await findSkill(ctx, args.userId, args.name)) {
-		throw createConvexError(convexError.SkillAlreadyExists());
+): Promise<Doc<'skills'>> {
+	const existing = await findSkill(ctx, args.userId, args.name);
+
+	if (args.create && existing) throw createConvexError(convexError.SkillAlreadyExists());
+	if ((existing?.contentHash ?? null) !== args.basedOn) {
+		throw createConvexError(convexError.SkillChanged());
 	}
 
-	return await upsertSkill(ctx, args);
+	const rows = existing ? await fileRows(ctx, existing._id) : [];
+	const usable = new Set([...rows.map((row) => row.key), ...args.uploaded]);
+	if (args.files.some((file) => !usable.has(file.key))) {
+		throw createConvexError(convexError.SkillChanged());
+	}
+
+	const fields = {
+		contentHash: args.contentHash,
+		title: args.title,
+		description: args.description,
+		metadata: args.metadata,
+		soleFile: args.soleFile,
+		editedAt: args.editedAt,
+		updatedAt: Date.now()
+	};
+
+	let skillId: Id<'skills'>;
+	if (existing) {
+		skillId = existing._id;
+		await ctx.db.patch(skillId, fields);
+	} else {
+		skillId = await ctx.db.insert('skills', { userId: args.userId, name: args.name, ...fields });
+	}
+
+	for (const row of rows) await ctx.db.delete(row._id);
+	for (const file of args.files) await ctx.db.insert('skillFiles', { skillId, ...file });
+
+	const kept = new Set(args.files.map((file) => file.key));
+	for (const row of rows) {
+		if (!kept.has(row.key)) await r2.deleteObject(ctx, row.key);
+	}
+
+	const skill = await ctx.db.get(skillId);
+	if (!skill) throw createConvexError(convexError.SkillNotFound());
+	return skill;
 }
 
 /** Trashes a skill and unbinds it from every project. Restorable for 30 days. */

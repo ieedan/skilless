@@ -79,8 +79,13 @@ export function planSync(
 
 /** Keeps the losing copy of a conflict so last-write-wins can never destroy work. */
 function stash(name: string, side: Side, files: SkillFile[]): string {
+	return stashFiles(name, side === 'push' ? 'remote' : 'local', files);
+}
+
+/** Writes a copy of a skill under `~/.skilless/conflicts` and returns where. */
+export function stashFiles(name: string, label: string, files: SkillFile[]): string {
 	const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-	const dir = path.join(CONFLICTS_DIR, name, `${stamp}-${side === 'push' ? 'remote' : 'local'}`);
+	const dir = path.join(CONFLICTS_DIR, name, `${stamp}-${label}`);
 
 	for (const file of files) fsu.writeFile(path.join(dir, file.path), file.contents);
 

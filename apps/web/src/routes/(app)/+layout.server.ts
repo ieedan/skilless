@@ -7,7 +7,10 @@ export async function load({ locals, url }) {
 		redirect(302, `/login?redirectTo=${encodeURIComponent(url.pathname)}`);
 	}
 
-	const user = await locals.convex.query(api.auth.getCurrentUser, {});
+	const [user, preferences] = await Promise.all([
+		locals.convex.query(api.auth.getCurrentUser, {}),
+		locals.convex.query(api.preferences.get, {})
+	]);
 
-	return { user: toAppUser(user) };
+	return { user: toAppUser(user, preferences), preferences };
 }

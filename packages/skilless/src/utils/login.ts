@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { getApiUrl, setToken } from '@/utils/auth';
 import { openBrowser } from '@/utils/browser';
 import { SkillessError } from '@/utils/errors';
-import { log } from '@/utils/prompts';
+import { log, spin } from '@/utils/prompts';
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -101,7 +101,7 @@ export async function login(): Promise<void> {
 
 		openBrowser(url);
 
-		setToken(await pending);
+		setToken(await spin('Waiting for you to sign in', () => pending));
 	} finally {
 		clearTimeout(timer);
 		server.close();

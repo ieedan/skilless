@@ -1,11 +1,16 @@
+import os from 'node:os';
 import { Option } from 'commander';
+import path from 'pathe';
 import pc from 'picocolors';
 import { z } from 'zod';
 import { ApiClient } from '@/utils/api';
 import { getApiUrl, getToken } from '@/utils/auth';
 import { NotAProjectError, NotAuthenticatedError, SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
-import { log } from '@/utils/prompts';
+import { shouldCopy } from '@/utils/install';
+import * as project from '@/utils/project';
+import type { Skipped } from '@/utils/project';
+import { confirm, isInteractive, log } from '@/utils/prompts';
 
 export const TRACE_ENV_VAR = 'SKILLESS_TRACE';
 
@@ -77,4 +82,55 @@ export function requireProjectKey(cwd: string, override?: string): string {
 	if (!key) throw new NotAProjectError();
 
 	return key;
+}
+
+/** How the user-level skill directories read in a message. */
+export const USER_SKILLS = '~/.agents/skills';
+
+/** A path as it reads in a message, with the home directory shortened to `~`. */
+function tilde(target: string): string {
+	const home = path.normalize(os.homedir());
+	return target === home || target.startsWith(`${home}/`)
+		? `~${target.slice(home.length)}`
+		: target;
+}
+
+/**
+ * Settles what a refresh could not link, then warns about whatever is left.
+ *
+ * A skill whose place is taken by something skilless did not make is offered
+ * back one at a time: overwrite it, or leave it. `--yes` overwrites without
+ * asking; without a terminal nothing is overwritten.
+ */
+export async function settleRefresh(
+	result: { skipped: Skipped[]; missing?: string[] },
+	opts: { copy?: boolean; yes?: boolean } = {}
+): Promise<void> {
+	for (const skip of result.skipped) {
+		if (skip.reason === 'tracked') {
+			log.warn(`\`${skip.name}\` is tracked by git here, so it was left alone.`);
+			continue;
+		}
+
+		const where = (skip.occupied?.paths ?? []).map(tilde).join(' and ');
+
+		const replace = opts.yes || (isInteractive && (await confirm(`Overwrite ${where}?`, false)));
+
+		if (!replace) {
+			if (isInteractive) {
+				log.dim(`Kept ${where}, so ${skip.name} is not linked there.`);
+			} else {
+				log.warn(`Skipped ${skip.name}: ${where} was not made by skilless.`);
+				log.dim('  Run this in a terminal to overwrite it, or pass --yes.');
+			}
+			continue;
+		}
+
+		project.overwrite(skip, { copy: shouldCopy(opts.copy) });
+		log.step(`Overwrote ${where}.`);
+	}
+
+	for (const name of result.missing ?? []) {
+		log.warn(`${name} is not on this machine yet, so it will be linked on the next sync.`);
+	}
 }
