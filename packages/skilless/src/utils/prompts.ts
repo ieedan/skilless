@@ -112,9 +112,10 @@ export async function input(message: string, opts: InputOptions = {}): Promise<s
 
 export async function multiselect(
 	message: string,
-	choices: { name: string; hint?: string }[]
+	/** A `disabled` choice is shown dimmed, with the reason beside it, and cannot be picked. */
+	choices: { name: string; hint?: string; disabled?: string }[]
 ): Promise<string[]> {
-	if (choices.length === 0) return [];
+	if (choices.every((choice) => choice.disabled)) return [];
 
 	const answer = await run<{ value: string[] }>(
 		{ type: 'multiselect', name: 'value', message, choices, ...list },

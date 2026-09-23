@@ -169,9 +169,16 @@ export const add = new Command('add')
 					return;
 				}
 
+				// already-added skills stay in the list, so it is clear they were not lost
 				selected = await multiselect(
 					`Add to ${key}`,
-					available.map((skill) => ({ name: skill.name }))
+					library
+						.filter((skill) => bound.has(skill.name) || linkable(skill))
+						.map((skill) =>
+							bound.has(skill.name)
+								? { name: skill.name, disabled: 'already added' }
+								: { name: skill.name }
+						)
 				);
 
 				if (selected.length === 0) {
