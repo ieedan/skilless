@@ -5,8 +5,7 @@
 	import RiCheckLine from 'remixicon-svelte/icons/check-line';
 	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
-	import GithubLogo from './github-logo.svelte';
-	import GitlabLogo from './gitlab-logo.svelte';
+	import ProjectIcon from './project-icon.svelte';
 
 	let {
 		projects,
@@ -34,9 +33,6 @@
 		const list = projects.map((project) => ({ project, parts: projectParts(project.key) }));
 		return needle ? list.filter(({ project }) => project.key.includes(needle)) : list;
 	});
-
-	/** Avatars that failed to load, so they fall back to the host logo. */
-	let broken = $state<Record<string, true>>({});
 
 	/**
 	 * The menu reads every keystroke for typeahead and uses the arrow keys to
@@ -138,27 +134,7 @@
 					{#snippet children({ checked })}
 						{@render box(checked, global)}
 
-						<span class="relative size-5 shrink-0 {global ? 'opacity-60' : ''}">
-							{#if parts.avatar && !broken[project._id]}
-								<img
-									src={parts.avatar}
-									alt=""
-									class="size-5 rounded-full bg-muted"
-									onerror={() => (broken[project._id] = true)}
-								/>
-								<span
-									class="absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full bg-popover"
-								>
-									<GithubLogo class="size-2.5" />
-								</span>
-							{:else if parts.host === 'github'}
-								<GithubLogo class="size-5" />
-							{:else if parts.host === 'gitlab'}
-								<GitlabLogo class="size-5" />
-							{:else}
-								<RiGitRepositoryLine class="size-5 text-muted-foreground" />
-							{/if}
-						</span>
+						<ProjectIcon {parts} surface="bg-popover" class={global ? 'opacity-60' : ''} />
 
 						<span class="truncate {global ? 'text-muted-foreground' : ''}" title={project.key}>
 							{parts.path}

@@ -76,7 +76,58 @@ async function listRepos(token: string): Promise<GithubRepo[]> {
 /** Where to send a user to grant the app access to more repos or orgs. */
 const installUrl = `https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new`;
 
+/**
+ * A repo's GitHub description, or null when it has none or cannot be read. Tries
+ * the user's token first so private repos the app is installed on resolve, then
+ * falls back to an anonymous request for public ones.
+ */
+async function describeRepo(token: string | null, path: string): Promise<string | null> {
+	for (const auth of token ? [token, null] : [null]) {
+		const response = await fetch(`https://api.github.com/repos/${path}`, {
+			headers: {
+				...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+				Accept: 'application/vnd.github+json',
+				'User-Agent': 'skilless',
+				'X-GitHub-Api-Version': '2022-11-28'
+			}
+		}).catch(() => null);
+		if (response?.ok) {
+			const repo = (await response.json()) as { description: string | null };
+			return repo.description?.trim() || null;
+		}
+	}
+	return null;
+}
+
 /* ---------------------------------------------------------------- website */
+
+/**
+ * Descriptions for the website's project list, keyed by project key. Only
+ * GitHub projects are looked up; anything else maps to null. Best effort — a
+ * failure for one repo never fails the rest.
+ */
+export const describe = action({
+	args: { keys: v.array(v.string()) },
+	handler: async (ctx, args): Promise<Record<string, string | null>> => {
+		const userId = await requireUser(ctx);
+
+		let token: string | null = null;
+		try {
+			token = await githubToken(ctx, userId);
+		} catch {
+			// signed in some other way, or the app was never installed
+		}
+
+		const entries = await Promise.all(
+			args.keys.map(async (key): Promise<[string, string | null]> => {
+				const path = key.startsWith('github.com/') ? key.slice('github.com/'.length) : null;
+				return [key, path ? await describeRepo(token, path) : null];
+			})
+		);
+
+		return Object.fromEntries(entries);
+	}
+});
 
 export const repos = action({
 	args: {},

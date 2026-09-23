@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import RiCodeSSlashLine from 'remixicon-svelte/icons/code-s-slash-line';
+	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import RiSettings3Line from 'remixicon-svelte/icons/settings-3-line';
 	import RiUser3Line from 'remixicon-svelte/icons/user-3-line';
 	import { afterNavigate } from '$app/navigation';
@@ -14,6 +15,7 @@
 
 	const links = [
 		{ href: '/skills', label: 'Skills', icon: RiCodeSSlashLine },
+		{ href: '/projects', label: 'Projects', icon: RiGitRepositoryLine },
 		{ href: '/settings', label: 'Settings', icon: RiSettings3Line },
 		{ href: '/account', label: 'Account', icon: RiUser3Line }
 	];

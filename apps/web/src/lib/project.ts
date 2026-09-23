@@ -30,6 +30,6 @@ export function projectParts(key: string): ProjectParts {
 		host,
 		owner,
 		path,
-		avatar: host === 'github' ? `https://github.com/${owner}.png?size=40` : undefined
+		avatar: host === 'github' ? `https://github.com/${owner}.png?size=80` : undefined
 	};
 }

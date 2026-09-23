@@ -4,6 +4,7 @@
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import Breadcrumb from '$lib/components/app/breadcrumb.svelte';
 	import { iconFor } from '$lib/components/app/file-icon.svelte';
+	import { projectParts } from '$lib/project';
 	import RiFolder3Fill from 'remixicon-svelte/icons/folder-3-fill';
 	import { provideHeaderActions } from '$lib/components/app/header-actions.svelte';
 	import { ConfirmDeleteDialog } from '$lib/components/ui/confirm-delete-dialog';
@@ -14,6 +15,7 @@
 
 	const SECTIONS: Record<string, string> = {
 		skills: 'Skills',
+		projects: 'Projects',
 		settings: 'Settings',
 		account: 'Account'
 	};
@@ -28,6 +30,16 @@
 		if (segments.length === 0) return [];
 
 		const [section, ...rest] = segments;
+
+		// A project key is a path of its own (`github.com/owner/repo`) whose
+		// segments are not pages, so it is one crumb.
+		if (section === 'projects' && rest.length > 0) {
+			const key = rest.map(decodeURIComponent).join('/');
+			return [
+				{ label: SECTIONS.projects, href: '/projects' },
+				{ label: projectParts(key).path, href: `/projects/${key}` }
+			];
+		}
 
 		return [
 			{ label: SECTIONS[section] ?? section, href: `/${section}` },
