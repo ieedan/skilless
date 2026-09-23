@@ -1,7 +1,7 @@
 {
 	"name": "skilless",
 	"description": "Author skills once, sync them everywhere, install them per project.",
-	"version": "0.0.2",
+	"version": "0.0.4",
 	"license": "MIT",
 	"homepage": "https://skilless.dev",
 	"author": {
