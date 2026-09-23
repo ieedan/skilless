@@ -1,0 +1,10 @@
+{
+	"name": "skilless",
+	"description": "Installs your skilless skills into every cloud session, in any repo.",
+	"version": "0.1.0",
+	"author": {
+		"name": "Aidan Bleser"
+	},
+	"homepage": "https://skilless.dev",
+	"repository": "https://github.com/ieedan/skilless"
+}

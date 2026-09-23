@@ -157,7 +157,10 @@ export const add = new Command('add')
 			let selected = names;
 
 			if (selected.length === 0) {
-				const available = library.filter((skill) => !bound.has(skill.name) && linkable(skill));
+				// globals are already in every project, so there is nothing to add
+				const available = library.filter(
+					(skill) => !bound.has(skill.name) && !skill.global && linkable(skill)
+				);
 
 				if (available.length === 0) {
 					log.info(
@@ -173,11 +176,13 @@ export const add = new Command('add')
 				selected = await multiselect(
 					`Add to ${key}`,
 					library
-						.filter((skill) => bound.has(skill.name) || linkable(skill))
+						.filter((skill) => skill.global || bound.has(skill.name) || linkable(skill))
 						.map((skill) =>
-							bound.has(skill.name)
-								? { name: skill.name, disabled: 'already added' }
-								: { name: skill.name }
+							skill.global
+								? { name: skill.name, disabled: 'installed globally' }
+								: bound.has(skill.name)
+									? { name: skill.name, disabled: 'already added' }
+									: { name: skill.name }
 						)
 				);
 

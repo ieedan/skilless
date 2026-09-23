@@ -1,0 +1,14 @@
+{
+	"name": "skilless",
+	"description": "Claude Code plugins for skilless.",
+	"owner": {
+		"name": "Aidan Bleser"
+	},
+	"plugins": [
+		{
+			"name": "skilless",
+			"source": "./plugins/skilless",
+			"description": "Installs your skilless skills into every cloud session, in any repo."
+		}
+	]
+}
