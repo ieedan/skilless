@@ -5,7 +5,6 @@
 
 <svelte:head>
 	<title>{APP_NAME} · {APP_DESCRIPTION}</title>
-	<meta name="description" content={APP_DESCRIPTION} />
 </svelte:head>
 
 <Landing />
