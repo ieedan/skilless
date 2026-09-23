@@ -13,7 +13,11 @@ function git(args: string[], cwd = repo) {
 }
 
 beforeEach(() => {
-	tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'skilless-'));
+	// `.native` rather than the JS implementation: only the native one expands a
+	// Windows 8.3 short name, and the runner's temp directory is one
+	// (`RUNNER~1`). git reports the long form, so without this the worktree test
+	// compares two spellings of the same path.
+	tmp = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), 'skilless-'));
 	home = path.join(tmp, 'home');
 	repo = path.join(tmp, 'repo');
 
