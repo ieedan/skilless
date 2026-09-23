@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-skilless is a new way to manage your skills. Instead of copying the same skill into every one of the projects that uses it or forcing it to be applied at the user level skilless allows you to invisibly add skills to specific projects with one source of truth for each skill. 
+skilless is a new way to manage your skills. Instead of copying the same skill into every one of the projects that uses it or forcing it to be applied at the user level skilless allows you to invisibly add skills to specific projects with one source of truth for each skill.
 
 ## The problem
 
@@ -13,10 +13,10 @@ You work across multiple different projects, some owned by you, some owned by ot
 
 ## The solution
 
-skilless allows you to invisibly add skills to only specific projects and symlinks those skills so that the same skill has one source of truth across multiple projects. 
+skilless allows you to invisibly add skills to only specific projects and symlinks those skills so that the same skill has one source of truth across multiple projects.
 
 > What does invisibly mean?
- 
+
 Invisibly means that skills won't show up in your git history, no more /skills folder in your git repositories.
 
 ## Getting started
@@ -32,4 +32,3 @@ Then you can start adding skills to your projects by running it just like the `s
 ```sh
 npx skilless add mattpocock/skills
 ```
-
