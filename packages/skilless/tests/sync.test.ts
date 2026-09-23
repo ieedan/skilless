@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { ApiClient } from '@/utils/api';
 import type { State } from '@/utils/state';
-import { planSync } from '@/utils/sync';
+import { applySync, planSync } from '@/utils/sync';
 import type { LocalSkill, RemoteSkill } from '@/utils/types';
 
 function local(name: string, hash: string, editedAt = 1000): LocalSkill {
@@ -100,5 +101,46 @@ describe('planSync', () => {
 	it('treats two sides that both appeared with different content as a conflict', () => {
 		const actions = plan([local('a', 'h1', 5)], [remote('a', 'h2', 9)], state({}));
 		expect(actions).toEqual([{ type: 'conflict-pull', name: 'a' }]);
+	});
+});
+
+describe('applySync', () => {
+	it('sends skills concurrently and reports them in plan order', async () => {
+		const names = Array.from({ length: 12 }, (_, i) => `s${String(i).padStart(2, '0')}`);
+		let inFlight = 0;
+		let peak = 0;
+
+		const api = {
+			// later skills answer sooner, so completion order is the reverse of plan order
+			putSkill: vi.fn(async (name: string) => {
+				peak = Math.max(peak, ++inFlight);
+				await new Promise((resolve) => setTimeout(resolve, 50 - Number(name.slice(1)) * 3));
+				inFlight--;
+				return remote(name, `new-${name}`);
+			}),
+			deleteSkill: vi.fn(async () => {})
+		} as unknown as ApiClient;
+
+		const locals = new Map(names.map((name) => [name, local(name, `new-${name}`)]));
+		const remotes = new Map([['gone', remote('gone', 'h')]]);
+		const actions = [
+			...names.map((name) => ({ type: 'push' as const, name })),
+			{ type: 'delete-remote' as const, name: 'gone' }
+		];
+		const s = state({ gone: 'h' });
+
+		const report = await applySync(api, actions, {
+			local: locals,
+			remote: remotes,
+			state: s,
+			yes: true
+		});
+
+		expect(peak).toBeGreaterThan(1);
+		expect(peak).toBeLessThanOrEqual(8);
+		expect(report.actions).toEqual(actions);
+		expect([...remotes.keys()].sort()).toEqual(names);
+		expect(remotes.get('s03')?.contentHash).toBe('new-s03');
+		expect(Object.keys(s.skills).sort()).toEqual(names);
 	});
 });
