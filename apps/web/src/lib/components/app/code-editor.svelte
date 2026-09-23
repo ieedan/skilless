@@ -27,13 +27,16 @@
 		 * Size and metrics live on the root so the gutter inherits them. Set only
 		 * on `.cm-content`, the line numbers fall back to the page's 16px and sit
 		 * a line off from the code they label.
+		 *
+		 * The size itself comes from the host element, which raises it on a phone;
+		 * see the comment down there.
 		 */
 		'&': {
 			color: 'var(--card-foreground)',
 			backgroundColor: 'transparent',
 			height: '100%',
 			fontFamily: 'var(--font-mono)',
-			fontSize: '13px',
+			fontSize: 'var(--cm-font-size, 13px)',
 			lineHeight: '1.6'
 		},
 		'.cm-content': { caretColor: 'var(--foreground)', padding: '0' },
@@ -172,4 +175,9 @@
 	});
 </script>
 
-<div bind:this={host} class="h-full w-full"></div>
+<!--
+	16px below `md`: the editor's content is contenteditable, and iOS Safari zooms
+	the page in when something smaller than that takes focus. Lines that no longer
+	fit scroll sideways, which `.cm-scroller` already allows.
+-->
+<div bind:this={host} class="h-full w-full [--cm-font-size:16px] md:[--cm-font-size:13px]"></div>
