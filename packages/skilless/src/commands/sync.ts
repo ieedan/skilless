@@ -45,10 +45,12 @@ export const sync = new Command('sync')
 
 			// deletions queued while offline go first, or the plan below would
 			// read them as skills this machine has never seen and pull them back
-			const [flushed, listed] = await spin(
-				'Checking skilless.dev',
-				async () => [await flushPending(api), await api.listSkills()] as const
-			);
+			const [flushed, listed] = await spin('Checking skilless.dev', async () => {
+				const before = await api.listSkills();
+				const flushed = await flushPending(api, before);
+				// only a flush that sent something can have changed the library
+				return [flushed, flushed > 0 ? await api.listSkills() : before] as const;
+			});
 
 			const local = new Map<string, LocalSkill>(
 				listLocalSkills().map((skill) => [skill.name, skill])
@@ -60,7 +62,7 @@ export const sync = new Command('sync')
 
 			const actions = planSync(local, remote, state, force);
 			const report = await spin('Syncing your library', () =>
-				applySync(api, actions, { local, state, yes: options.yes })
+				applySync(api, actions, { local, remote, state, yes: options.yes })
 			);
 
 			writeState(state);
@@ -68,11 +70,13 @@ export const sync = new Command('sync')
 			const changes = report.actions.map(describe).filter((line) => line !== null);
 			for (const line of changes) log.step(line);
 
-			// anything queued about a skill that only just got pushed can go now
+			// anything queued about a skill that only just got pushed can go now.
+			// `remote` already reflects every push and delete, so the library only
+			// needs listing again if the flush changed a global or a source
 			const [sent, latest] = await spin('Syncing your library', async () => {
-				const sent = flushed + (await flushPending(api));
-				const latest = changes.length > 0 || sent > 0 ? await api.listSkills() : listed;
-				return [sent, latest] as const;
+				const library = [...remote.values()];
+				const late = await flushPending(api, library);
+				return [flushed + late, late > 0 ? await api.listSkills() : library] as const;
 			});
 			if (sent > 0) log.step(`Sent ${sent} change(s) made while offline.`);
 

@@ -2,7 +2,7 @@ import type { ApiClient } from '@/utils/api';
 import * as fsu from '@/utils/fs';
 import { PENDING_FILE } from '@/utils/paths';
 import { localSkillNames } from '@/utils/skill';
-import type { SkillSource } from '@/utils/types';
+import type { RemoteSkill, SkillSource } from '@/utils/types';
 
 export type ProjectChange = { add: string[]; remove: string[] };
 
@@ -118,13 +118,15 @@ export function queueDelete(names: string[]): void {
  * stays queued until the `sync` that pushes it. Once the skill is gone from
  * this machine too, there is nothing left for it to wait on, so it is dropped.
  *
+ * Pass `library` when the caller has just listed it, to save listing it again.
+ *
  * Returns how many changes were sent.
  */
-export async function flushPending(api: ApiClient): Promise<number> {
+export async function flushPending(api: ApiClient, library?: RemoteSkill[]): Promise<number> {
 	const pending = readPending();
 	if (isEmpty(pending)) return 0;
 
-	const known = new Set((await api.listSkills()).map((skill) => skill.name));
+	const known = new Set((library ?? (await api.listSkills())).map((skill) => skill.name));
 	const waiting = (name: string) => localSkillNames().includes(name);
 	let sent = 0;
 

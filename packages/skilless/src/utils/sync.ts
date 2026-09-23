@@ -92,11 +92,42 @@ export function stashFiles(name: string, label: string, files: SkillFile[]): str
 	return dir;
 }
 
+/** How many skills are sent or fetched at once. */
+const CONCURRENCY = 8;
+
+/** Runs `task` over `items` with at most `limit` in flight, resolving in input order. */
+async function mapLimit<T, R>(
+	items: T[],
+	limit: number,
+	task: (item: T) => Promise<R>
+): Promise<R[]> {
+	const results = new Array<R>(items.length);
+	let next = 0;
+
+	const worker = async () => {
+		while (next < items.length) {
+			const index = next++;
+			results[index] = await task(items[index]!);
+		}
+	};
+
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+	return results;
+}
+
+/**
+ * Carries out a plan. Confirmations are asked one at a time up front; the
+ * network work then runs concurrently, since each skill is independent.
+ *
+ * `remote` is kept up to date as skills are pushed and deleted, so the caller
+ * can use it as the library afterwards without listing it again.
+ */
 export async function applySync(
 	api: ApiClient,
 	actions: SyncAction[],
 	context: {
 		local: Map<string, LocalSkill>;
+		remote: Map<string, RemoteSkill>;
 		state: State;
 		yes: boolean;
 	}
@@ -104,7 +135,24 @@ export async function applySync(
 	const report: SyncReport = { actions: [], conflicts: [], skipped: [] };
 	const now = Date.now();
 
+	const confirmed = new Set<SyncAction>();
 	for (const action of actions) {
+		if (action.type !== 'delete-local' && action.type !== 'delete-remote') continue;
+
+		const ok =
+			context.yes ||
+			(await prompts.confirm(
+				action.type === 'delete-local'
+					? `Delete ${action.name} from this machine? It was deleted elsewhere.`
+					: `Delete ${action.name} everywhere? It was deleted on this machine.`,
+				true
+			));
+
+		if (ok) confirmed.add(action);
+		else report.skipped.push(action.name);
+	}
+
+	const apply = async (action: SyncAction): Promise<boolean> => {
 		const { name } = action;
 		const here = context.local.get(name);
 
@@ -117,12 +165,12 @@ export async function applySync(
 						syncedAt: now
 					};
 				}
-				break;
+				return true;
 			}
 
 			case 'push':
 			case 'conflict-push': {
-				if (!here) break;
+				if (!here) return true;
 
 				if (action.type === 'conflict-push') {
 					const theirs = await api.getSkill(name);
@@ -135,19 +183,19 @@ export async function applySync(
 					}
 				}
 
-				await api.putSkill(name, here.files, here.editedAt);
+				context.remote.set(name, await api.putSkill(name, here.files, here.editedAt));
 				context.state.skills[name] = {
 					contentHash: here.contentHash,
 					editedAt: here.editedAt,
 					syncedAt: now
 				};
-				break;
+				return true;
 			}
 
 			case 'pull':
 			case 'conflict-pull': {
 				const theirs = await api.getSkill(name);
-				if (!theirs) break;
+				if (!theirs) return true;
 
 				if (action.type === 'conflict-pull' && here) {
 					report.conflicts.push({
@@ -163,48 +211,33 @@ export async function applySync(
 					editedAt: theirs.editedAt,
 					syncedAt: now
 				};
-				break;
+				return true;
 			}
 
 			case 'delete-local': {
-				const ok =
-					context.yes ||
-					(await prompts.confirm(
-						`Delete ${name} from this machine? It was deleted elsewhere.`,
-						true
-					));
-
-				if (!ok) {
-					report.skipped.push(name);
-					continue;
-				}
+				if (!confirmed.has(action)) return false;
 
 				fsu.remove(skillDir(name));
 				delete context.state.skills[name];
-				break;
+				return true;
 			}
 
 			case 'delete-remote': {
-				const ok =
-					context.yes ||
-					(await prompts.confirm(
-						`Delete ${name} everywhere? It was deleted on this machine.`,
-						true
-					));
-
-				if (!ok) {
-					report.skipped.push(name);
-					continue;
-				}
+				if (!confirmed.has(action)) return false;
 
 				await api.deleteSkill(name);
+				context.remote.delete(name);
 				delete context.state.skills[name];
-				break;
+				return true;
 			}
 		}
+	};
 
-		report.actions.push(action);
-	}
+	const applied = await mapLimit(actions, CONCURRENCY, apply);
+
+	// in plan order, not completion order, so the log reads the same every run
+	report.actions = actions.filter((_, index) => applied[index]);
+	report.conflicts.sort((a, b) => a.name.localeCompare(b.name));
 
 	return report;
 }
