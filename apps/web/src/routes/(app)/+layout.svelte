@@ -57,8 +57,12 @@
 	The shell from the design: a tinted sidebar beside a full-bleed content area,
 	with the breadcrumbs in a header ruled off from the page below. Below `md`
 	the sidebar becomes a sheet, opened from the button before the breadcrumbs.
+
+	`data-surface` names the surface this shell fills the viewport with, so the
+	page canvas — and with it the browser chrome a phone paints from it — sits on
+	--card alongside it rather than on the default --background (see layout.css).
 -->
-<Sidebar.Provider class="h-dvh min-h-0 bg-card" style="--sidebar-width: 15rem;">
+<Sidebar.Provider data-surface="card" class="h-dvh min-h-0 bg-card" style="--sidebar-width: 15rem;">
 	<AppSidebar user={data.user} />
 
 	<Sidebar.Inset class="min-w-0 bg-card">
