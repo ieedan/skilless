@@ -217,9 +217,13 @@ function write(stream: NodeJS.WriteStream, text: string): void {
 	if (spinning) spinner!.ora.render();
 }
 
+/** The web app's `--primary` / `--primary-foreground` (apps/web/src/routes/layout.css), as 24-bit colour. */
+const brand = (text: string): string =>
+	pc.isColorSupported ? `\x1b[48;2;95;95;95m\x1b[38;2;250;250;250m${text}\x1b[39m\x1b[49m` : text;
+
 export const log = {
 	intro(version: string) {
-		write(process.stdout, `${pc.bgWhite(pc.black(' skilless '))}${pc.gray(` v${version}`)}\n\n`);
+		write(process.stdout, `${brand(' skilless ')}${pc.gray(` v${version}`)}\n\n`);
 	},
 	info(message: string) {
 		write(process.stdout, `${pc.blue('·')} ${message}\n`);
