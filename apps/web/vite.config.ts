@@ -2,6 +2,21 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+/*
+ * The auth library imports PUBLIC_CONVEX_SITE_URL from `$env/static/public`, so
+ * the build fails outright without it. On Vercel, `convex deploy
+ * --cmd-url-env-var-name` hands the build PUBLIC_CONVEX_URL and nothing else,
+ * and each preview gets a deployment of its own, so there is no fixed value to
+ * configure. Convex serves HTTP actions from the sibling `.convex.site` host, so
+ * derive it here, before SvelteKit reads the environment.
+ */
+if (process.env.PUBLIC_CONVEX_URL && !process.env.PUBLIC_CONVEX_SITE_URL) {
+	process.env.PUBLIC_CONVEX_SITE_URL = process.env.PUBLIC_CONVEX_URL.replace(
+		'.convex.cloud',
+		'.convex.site'
+	);
+}
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	// Vite only exposes VITE_ on `import.meta.env` by default. SvelteKit's own
