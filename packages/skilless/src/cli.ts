@@ -14,6 +14,7 @@ const cli = program
 	.addCommand(commands.remove)
 	.addCommand(commands.deleteCommand)
 	.addCommand(commands.install)
+	.addCommand(commands.vendor)
 	.addCommand(commands.sync)
 	.addCommand(commands.importCommand)
 	.addCommand(commands.migrate)

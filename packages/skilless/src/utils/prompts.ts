@@ -222,6 +222,33 @@ function write(stream: NodeJS.WriteStream, text: string): void {
 const brand = (text: string): string =>
 	pc.isColorSupported ? `\x1b[48;2;95;95;95m\x1b[38;2;250;250;250m${text}\x1b[39m\x1b[49m` : text;
 
+/** Past this, a line is too long to read comfortably even on a wide terminal. */
+const MAX_WIDTH = 80;
+
+/**
+ * Breaks `words` into lines that fit the terminal, each one indented to sit
+ * under the text of a `·` line rather than its marker.
+ */
+function wrap(words: string[], separator: string): string {
+	const indent = '  ';
+	const width = Math.min(process.stdout.columns || MAX_WIDTH, MAX_WIDTH) - indent.length;
+	const lines: string[] = [];
+	let line = '';
+
+	for (const [i, word] of words.entries()) {
+		const piece = i < words.length - 1 ? `${word}${separator.trimEnd()}` : word;
+		if (line && line.length + 1 + piece.length > width) {
+			lines.push(line);
+			line = piece;
+		} else {
+			line = line ? `${line} ${piece}` : piece;
+		}
+	}
+	if (line) lines.push(line);
+
+	return lines.map((l) => `${indent}${l}\n`).join('');
+}
+
 export const log = {
 	intro(version: string) {
 		write(process.stdout, `${brand(' skilless ')}${pc.gray(` v${version}`)}\n\n`);
@@ -240,6 +267,14 @@ export const log = {
 	},
 	dim(message: string) {
 		write(process.stdout, `${pc.gray(message)}\n`);
+	},
+	/** A `·` heading with `items` wrapped beneath it, for lists too long for one line. */
+	list(heading: string, items: string[]) {
+		write(process.stdout, `${pc.blue('·')} ${heading}\n${pc.cyan(wrap(items, ', '))}`);
+	},
+	/** Dimmed context for the prompt that follows, wrapped and indented under it. */
+	note(message: string) {
+		write(process.stdout, pc.gray(wrap(message.split(/\s+/), ' ')));
 	},
 	blank() {
 		write(process.stdout, '\n');

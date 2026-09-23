@@ -163,11 +163,16 @@ export const migrate = new Command('migrate')
 			let migrations = await plan(inProject);
 
 			if (migrations.length > 0) {
-				log.info(`Project skills in ${key}: ${migrations.map((m) => m.skill.name).join(', ')}`);
+				log.list(
+					`Project skills in ${key}`,
+					migrations.map((m) => m.skill.name)
+				);
 				const ok =
 					options.yes ||
 					(await confirm(
-						`Move ${migrations.length} skill(s) into skilless and link them here?`,
+						migrations.length === 1
+							? 'Move it into skilless and link it here?'
+							: `Move these ${migrations.length} into skilless and link them here?`,
 						true
 					));
 				if (!ok) migrations = [];
@@ -175,17 +180,19 @@ export const migrate = new Command('migrate')
 
 			if (inUser.length > 0) {
 				const names = [...new Set(inUser.map((found) => found.name))].sort();
-				log.info(`User-level skills: ${names.join(', ')}`);
+				log.list('User-level skills', names);
 
 				// never on --yes alone: these reach every project on the machine
-				const wantsUser =
-					options.user ||
-					(!options.yes &&
-						isInteractive &&
-						(await confirm(
-							'Would you also like to migrate your user-level skills? They become global and are linked back into ~/.agents/skills, so every project still gets them.',
-							false
-						)));
+				let wantsUser = options.user === true;
+				if (!wantsUser && !options.yes && isInteractive) {
+					log.note(
+						'They would become global skills, linked back into ~/.agents/skills so every project still gets them.'
+					);
+					wantsUser = await confirm(
+						names.length === 1 ? 'Migrate it too?' : `Migrate these ${names.length} too?`,
+						false
+					);
+				}
 
 				if (wantsUser) {
 					const taken = new Set(migrations.map((m) => m.skill.name));

@@ -1,6 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'pathe';
 import { SkillessError } from '@/utils/errors';
 import * as fsu from '@/utils/fs';
@@ -149,14 +148,14 @@ function safeSubpath(subpath: string): string {
 
 /**
  * Shallow clones a source into a temporary directory and hands it to `run`,
- * deleting it afterwards whatever happens.
+ * deleting it afterwards whatever happens — even a cancelled prompt or ctrl-c.
  */
 export async function withClone<T>(
 	source: Source,
 	run: (dir: string) => Promise<T>,
 	opts: { interactive: boolean }
 ): Promise<T> {
-	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skilless-'));
+	const { dir, dispose } = fsu.makeTemp('skilless-');
 
 	try {
 		const args = ['clone', '--depth', '1', '--quiet'];
@@ -189,7 +188,7 @@ export async function withClone<T>(
 
 		return await run(dir);
 	} finally {
-		fsu.remove(dir);
+		dispose();
 	}
 }
 

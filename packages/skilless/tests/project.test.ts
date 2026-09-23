@@ -174,6 +174,63 @@ describe('materialize', () => {
 	});
 });
 
+describe('vendor', () => {
+	const files = [{ path: 'SKILL.md', contents: '# vendored\n' }];
+
+	it('writes real files for git to see', async () => {
+		const project = await import('@/utils/project');
+		project.vendor(repo, { name: 'triage', files });
+
+		expect(fs.lstatSync(path.join(repo, '.agents/skills/triage/SKILL.md')).isFile()).toBe(true);
+		expect(fs.readFileSync(path.join(repo, '.claude/skills/triage/SKILL.md'), 'utf8')).toBe(
+			'# vendored\n'
+		);
+
+		const status = git(['status', '--porcelain', '-uall']);
+		expect(status).toContain('.agents/skills/triage/SKILL.md');
+		expect(status).toContain('.claude/skills/triage');
+	});
+
+	it('takes over a skill that was linked, and is no longer ours', async () => {
+		const project = await import('@/utils/project');
+		project.materialize(repo, [{ name: 'triage' }], { copy: false });
+		project.vendor(repo, { name: 'triage', files });
+
+		expect(fs.lstatSync(path.join(repo, '.agents/skills/triage')).isSymbolicLink()).toBe(false);
+		expect(project.ownedSkills(repo)).toEqual([]);
+
+		// reconciling or deleting must never touch what the repo now owns
+		expect(project.unmaterialize(repo, ['triage'])).toEqual([]);
+		expect(fs.existsSync(path.join(repo, '.agents/skills/triage/SKILL.md'))).toBe(true);
+	});
+
+	it('still owns copies it made', async () => {
+		const project = await import('@/utils/project');
+		project.materialize(repo, [{ name: 'triage', files }], { copy: true });
+
+		expect(project.ownedSkills(repo)).toEqual(['triage']);
+	});
+
+	it('does not block on a vendored skill, only on one someone else made', async () => {
+		const project = await import('@/utils/project');
+		project.vendor(repo, { name: 'triage', files });
+		expect(project.blocking(repo, 'triage')).toEqual([]);
+
+		fs.mkdirSync(path.join(repo, '.agents/skills/mine'), { recursive: true });
+		expect(project.blocking(repo, 'mine')).toEqual([path.join(repo, '.agents/skills/mine')]);
+	});
+
+	it('does not block on a committed copy', async () => {
+		fs.mkdirSync(path.join(repo, '.agents/skills/mine'), { recursive: true });
+		fs.writeFileSync(path.join(repo, '.agents/skills/mine/SKILL.md'), '# mine\n');
+		git(['add', '.']);
+		git(['commit', '-qm', 'mine']);
+
+		const project = await import('@/utils/project');
+		expect(project.blocking(repo, 'mine')).toEqual([]);
+	});
+});
+
 describe('worktrees', () => {
 	it('finds the exclude file from inside a worktree', async () => {
 		const worktree = path.join(tmp, 'wt');

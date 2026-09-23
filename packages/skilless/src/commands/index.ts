@@ -11,6 +11,7 @@ import { migrate } from '@/commands/migrate';
 import { remove } from '@/commands/remove';
 import { sync } from '@/commands/sync';
 import { update } from '@/commands/update';
+import { vendor } from '@/commands/vendor';
 
 export {
 	add,
@@ -25,5 +26,6 @@ export {
 	migrate,
 	remove,
 	sync,
-	update
+	update,
+	vendor
 };

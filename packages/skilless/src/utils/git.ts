@@ -123,6 +123,21 @@ export function addExcludes(cwd: string, patterns: string[]): boolean {
 	return true;
 }
 
+/** The rules in the exclude file, or null outside a git repo. */
+export function readExcludes(cwd: string): Set<string> | null {
+	const target = excludeFile(cwd);
+	if (!target) return null;
+	if (!fsu.exists(target)) return new Set();
+
+	return new Set(
+		fs
+			.readFileSync(target, 'utf8')
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean)
+	);
+}
+
 export function removeExcludes(cwd: string, patterns: string[]): void {
 	const target = excludeFile(cwd);
 	if (!target || !fsu.exists(target)) return;

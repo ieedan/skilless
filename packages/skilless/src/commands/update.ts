@@ -122,13 +122,11 @@ export const update = new Command('update')
 							}
 
 							if (mine !== skill.source.hash) {
-								const replace =
-									options.force ||
-									(isInteractive &&
-										!options.yes &&
-										(await confirm(
-											`You have edited ${skill.name} since it came from ${where}. Replace your edits with what it has now?`
-										)));
+								let replace = options.force === true;
+								if (!replace && isInteractive && !options.yes) {
+									log.note(`You have edited ${skill.name} since it came from ${where}.`);
+									replace = await confirm(`Replace your edits to ${skill.name}?`);
+								}
 
 								if (!replace) {
 									kept.push(skill.name);

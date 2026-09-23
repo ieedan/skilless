@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'pathe';
 
 export function exists(target: string): boolean {
@@ -43,6 +44,50 @@ export function remove(target: string): void {
 	}
 
 	fs.rmSync(target, { recursive: true, force: true });
+}
+
+/* ------------------------------------------------------------------- temp */
+
+const temps = new Set<string>();
+
+function removeTemps(): void {
+	for (const dir of temps) remove(dir);
+	temps.clear();
+}
+
+// by default a signal kills the process outright, skipping `exit` listeners
+function interrupted(signal: NodeJS.Signals): void {
+	process.exit(128 + os.constants.signals[signal]);
+}
+
+const SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
+
+/**
+ * Makes a temporary directory that is removed when the process exits, however
+ * it exits: a `finally` never runs past `process.exit()` or a ctrl-c. Call
+ * `dispose` to remove it sooner. Signals are only caught while one exists, so
+ * everywhere else they keep their default behaviour.
+ */
+export function makeTemp(prefix: string): { dir: string; dispose: () => void } {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+
+	if (temps.size === 0) {
+		process.on('exit', removeTemps);
+		for (const signal of SIGNALS) process.on(signal, interrupted);
+	}
+	temps.add(dir);
+
+	return {
+		dir,
+		dispose() {
+			remove(dir);
+			temps.delete(dir);
+			if (temps.size > 0) return;
+
+			process.off('exit', removeTemps);
+			for (const signal of SIGNALS) process.off(signal, interrupted);
+		}
+	};
 }
 
 /** Every file under `dir`, as paths relative to it, depth first and sorted. */

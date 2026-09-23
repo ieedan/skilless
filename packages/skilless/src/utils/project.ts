@@ -97,11 +97,19 @@ function linksTo(link: string, expected: string): boolean {
  * points back at `agents/<name>` either way — so a copied skill is still
  * identifiable. A record on disk could drift from what is actually there; a
  * link cannot.
+ *
+ * A vendored skill has the same shape as a copied one, so in a repo a copy
+ * is only ours while git is told to ignore it — vendoring drops that rule, and
+ * from then on the files belong to the repo.
  */
 function isOurs(scope: Scope, name: string): boolean {
 	const agents = path.join(scope.agents, name);
 	if (linksTo(agents, skillDir(name))) return true;
-	return linksTo(path.join(scope.claude, name), agents);
+	if (!linksTo(path.join(scope.claude, name), agents)) return false;
+	if (!scope.repo) return true;
+
+	const excludes = git.readExcludes(scope.repo);
+	return excludes === null || excludes.has(`/${AGENTS_SKILLS}/${name}`);
 }
 
 export function ownedSkills(target: Target): string[] {
@@ -217,7 +225,8 @@ export function materialize(
 	if (repo) {
 		// drop the rule the marker used to need, for repos set up by an older version
 		git.removeExcludes(repo, [`/${LEGACY_MARKER}`]);
-		git.addExcludes(repo, excludePatterns(ownedSkills(scope)));
+		// what was just written first: a copy is only ours once its rule is there
+		git.addExcludes(repo, excludePatterns([...new Set([...written, ...ownedSkills(scope)])]));
 	}
 
 	return { written, skipped };
@@ -259,6 +268,29 @@ export function overwrite(skip: Skipped, opts: { copy: boolean }): void {
 	write(scope, skill, opts);
 
 	if (scope.repo) git.addExcludes(scope.repo, excludePatterns([skill.name]));
+}
+
+/**
+ * Writes a skill's real files into a project for the repo to commit, and
+ * unlinks the claude side into them. From then on skilless leaves it alone:
+ * without its exclude rule it is no longer ours, so nothing reconciles it away.
+ */
+export function vendor(root: string, skill: Materializable): void {
+	const scope = projectScope(root);
+
+	write(scope, skill, { copy: true });
+	git.removeExcludes(root, excludePatterns([skill.name]));
+}
+
+/** Whatever of a skill is in a project that skilless neither made nor vendored. */
+export function blocking(root: string, name: string): string[] {
+	const scope = projectScope(root);
+	const agents = path.join(scope.agents, name);
+
+	// vendored already, committed or not
+	if (linksTo(path.join(scope.claude, name), agents)) return [];
+
+	return occupying(scope, name).filter((at) => !git.isTracked(root, path.relative(root, at)));
 }
 
 export function unmaterialize(target: Target, names: string[]): string[] {
