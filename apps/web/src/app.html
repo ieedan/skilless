@@ -4,12 +4,20 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
-		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!--
+			`theme-color` is not here: keyed off `prefers-color-scheme` it ignores the
+			mode picked in the app, and a fixed value cannot follow the surface the
+			page sits on. The root layout emits it from the live canvas instead.
+		-->
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover" class="bg-background text-foreground antialiased">
+	<!--
+		Styling lives in layout.css rather than here, so the canvas rule in it can
+		reach the background with plain specificity instead of fighting a utility
+		class in a later cascade layer.
+	-->
+	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

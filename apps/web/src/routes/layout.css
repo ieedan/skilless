@@ -158,7 +158,21 @@
 	}
 
 	body {
-		@apply bg-background font-sans text-foreground;
+		@apply bg-background font-sans text-foreground antialiased;
+	}
+
+	/*
+	 * A phone paints its own surfaces from the page canvas, and the canvas comes
+	 * from the body: iOS tints the area behind the status bar with it, and both
+	 * platforms fill the overscroll gutters with it. Pages sit on --background,
+	 * but the app shell is a full-bleed --card surface, so on a phone the canvas
+	 * framed the app in a lighter grey above its header and below its content.
+	 *
+	 * A shell names the surface it covers the viewport with and the canvas
+	 * follows it.
+	 */
+	body:has([data-surface='card']) {
+		@apply bg-card;
 	}
 
 	/* Inline code in prose: Geist Mono runs larger than Geist and its
