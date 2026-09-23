@@ -505,7 +505,7 @@ const vercelProd: Step = {
 		note(`Set the build command to:`, 'Convex deploys from Vercel');
 
 		block(
-			'cd ../../packages/platform && npx convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd "cd ../../apps/web && pnpm build"'
+			'pnpm -w vercel:deploy'
 		);
 	}
 };
