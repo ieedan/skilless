@@ -5,7 +5,6 @@ import { confirm, log, note, password, text } from '@clack/prompts';
 import {
 	block,
 	detectRunner,
-	envBlock,
 	exitIfCancelled,
 	generateSecret,
 	readEnvFile,
@@ -484,29 +483,96 @@ const convexEnvProd: Step = {
 	run: (ctx) => pushConvexEnv(ctx, CONVEX_KEYS, true)
 };
 
+/* ------------------------------------------------------------------ vercel */
+
+const VERCEL = ['npx', 'vercel'];
+
+/** Signs in and links the repo, handing the terminal over for either. */
+async function vercelLink(ctx: StepContext): Promise<void> {
+	const cwd = ctx.options.cwd;
+
+	if (tryRun([...VERCEL, 'whoami'], { cwd }) === null) {
+		run([...VERCEL, 'login'], { cwd, interactive: true });
+	}
+
+	if (fs.existsSync(path.join(cwd, '.vercel', 'project.json'))) return;
+
+	note(
+		'Pick or create the project. Root directory apps/web, framework SvelteKit.',
+		'Link the Vercel project'
+	);
+
+	// `vercel link` can pull the development variables down over .env.local
+	const env = envFile(ctx);
+	const saved = fs.existsSync(env) ? fs.readFileSync(env) : null;
+	try {
+		run([...VERCEL, 'link'], { cwd, interactive: true });
+	} finally {
+		if (saved) fs.writeFileSync(env, saved, { mode: 0o600 });
+	}
+}
+
+/**
+ * Overwrites whatever is there, so a second run is safe. Values go over stdin;
+ * `printf`, not `echo`, since Vercel keeps a trailing newline as part of it.
+ */
+function vercelEnvSet(
+	ctx: StepContext,
+	target: 'production' | 'preview',
+	values: Record<string, string | undefined>
+): Promise<void> {
+	return task(`Setting ${target} Vercel variables`, () => {
+		for (const [key, value] of Object.entries(values)) {
+			if (!value) throw new Error(`${key} has no value to send to Vercel.`);
+
+			// Vercel refuses secret visibility on anything with the PUBLIC_ prefix
+			const visibility = key.startsWith('PUBLIC_')
+				? ['--no-sensitive', '--visibility', 'config']
+				: ['--sensitive'];
+
+			run([...VERCEL, 'env', 'add', key, target, '--force', ...visibility], {
+				cwd: ctx.options.cwd,
+				input: value
+			});
+		}
+	});
+}
+
+const prodDeployKey: Step = {
+	name: 'prod-deploy-key',
+	run: async (ctx) => {
+		note(
+			'https://dashboard.convex.dev\n\nYour project → Production → Settings → Deploy keys → Generate a production deploy key.\nVercel needs it to run `convex deploy` during the build.',
+			'Convex production deploy key'
+		);
+
+		const key = await password({
+			message: 'CONVEX_DEPLOY_KEY',
+			validate: (value) => (value?.trim() ? undefined : 'Required.')
+		});
+		exitIfCancelled(key);
+
+		remember(ctx, 'CONVEX_DEPLOY_KEY', key.trim());
+	}
+};
+
 const vercelProd: Step = {
 	name: 'vercel',
 	run: async (ctx) => {
-		note(
-			'https://vercel.com/new\n\nRoot directory apps/web, framework SvelteKit.',
-			'Import the repo'
-		);
+		await vercelLink(ctx);
 
-		log.message('Add these to the Production environment, then redeploy.');
+		await vercelEnvSet(ctx, 'production', {
+			CONVEX_DEPLOY_KEY: recall(ctx, 'CONVEX_DEPLOY_KEY'),
+			FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET'),
+			// the build gets PUBLIC_CONVEX_URL from `convex deploy`; the server
+			// reads both again at runtime, where nothing injects them
+			PUBLIC_CONVEX_URL: recall(ctx, 'PUBLIC_CONVEX_URL'),
+			PUBLIC_CONVEX_SITE_URL: recall(ctx, 'PUBLIC_CONVEX_SITE_URL')
+		});
 
-		block(
-			envBlock({
-				PUBLIC_CONVEX_URL: recall(ctx, 'PUBLIC_CONVEX_URL') ?? '',
-				PUBLIC_CONVEX_SITE_URL: recall(ctx, 'PUBLIC_CONVEX_SITE_URL') ?? '',
-				FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET') ?? ''
-			})
-		);
+		note('Set the build command in the project settings to:', 'Convex deploys from Vercel');
 
-		note(`Set the build command to:`, 'Convex deploys from Vercel');
-
-		block(
-			'pnpm -w vercel:deploy'
-		);
+		block('pnpm -w vercel:deploy');
 	}
 };
 
@@ -545,14 +611,12 @@ const previewVercel: Step = {
 	run: async (ctx) => {
 		remember(ctx, 'FUNCTION_SECRET', recall(ctx, 'FUNCTION_SECRET') ?? generateSecret());
 
-		log.message('Add these to the Preview environment only.');
+		await vercelLink(ctx);
 
-		block(
-			envBlock({
-				CONVEX_DEPLOY_KEY: recall(ctx, 'CONVEX_DEPLOY_KEY') ?? '',
-				FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET') ?? ''
-			})
-		);
+		await vercelEnvSet(ctx, 'preview', {
+			CONVEX_DEPLOY_KEY: recall(ctx, 'CONVEX_DEPLOY_KEY'),
+			FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET')
+		});
 
 		note(
 			'Each preview gets its own Convex deployment, so its variables are set by the deploy key rather than copied here. PUBLIC_CONVEX_URL is filled in by the build.',
@@ -607,6 +671,7 @@ export const prodSteps: Step[] = [
 	githubProd,
 	r2Prod,
 	secretsStep('secrets-prod'),
+	prodDeployKey,
 	convexProdProvision,
 	convexEnvProd,
 	convexProdDeploy,

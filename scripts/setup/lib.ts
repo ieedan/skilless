@@ -62,6 +62,8 @@ export type RunOptions = {
 	/** Hand the terminal over, for anything that logs you in or asks a question. */
 	interactive?: boolean;
 	env?: Record<string, string>;
+	/** Piped to stdin, so a secret stays out of argv, where `ps` can see it. */
+	input?: string;
 };
 
 export function run(command: string[], opts: RunOptions): string {
@@ -72,6 +74,7 @@ export function run(command: string[], opts: RunOptions): string {
 		cwd: opts.cwd,
 		encoding: 'utf8',
 		stdio: opts.interactive ? 'inherit' : 'pipe',
+		input: opts.input,
 		env: { ...process.env, ...opts.env }
 	});
 
