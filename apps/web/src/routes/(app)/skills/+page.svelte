@@ -29,7 +29,6 @@
 	const projects = $derived(data.projects.data ?? []);
 
 	type Skill = (typeof skills)[number];
-	type Project = (typeof projects)[number];
 
 	let query = $state('');
 	const queryTerms = $derived(terms(query));
