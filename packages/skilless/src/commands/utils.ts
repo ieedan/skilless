@@ -88,7 +88,7 @@ export function requireProjectKey(cwd: string, override?: string): string {
 export const USER_SKILLS = '~/.agents/skills';
 
 /** A path as it reads in a message, with the home directory shortened to `~`. */
-function tilde(target: string): string {
+export function tilde(target: string): string {
 	const home = path.normalize(os.homedir());
 	return target === home || target.startsWith(`${home}/`)
 		? `~${target.slice(home.length)}`

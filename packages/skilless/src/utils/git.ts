@@ -95,6 +95,14 @@ export function isTracked(cwd: string, relativePath: string): boolean {
 }
 
 /**
+ * Stages the removal of a path from git, leaving the files on disk. Nothing is
+ * committed: that stays the user's call.
+ */
+export function untrack(cwd: string, relativePath: string): boolean {
+	return git(['rm', '-r', '--cached', '--quiet', '--', relativePath], cwd) !== null;
+}
+
+/**
  * Adds local-only ignore rules. `.git/info/exclude` is never pushed and never
  * appears in `git status`, which is what keeps skills invisible in a repo that
  * isn't yours.

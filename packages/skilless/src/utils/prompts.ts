@@ -268,9 +268,13 @@ export const log = {
 	dim(message: string) {
 		write(process.stdout, `${pc.gray(message)}\n`);
 	},
-	/** A `·` heading with `items` wrapped beneath it, for lists too long for one line. */
-	list(heading: string, items: string[]) {
-		write(process.stdout, `${pc.blue('·')} ${heading}\n${pc.cyan(wrap(items, ', '))}`);
+	/**
+	 * A heading with `items` wrapped beneath it, for lists too long for one line.
+	 * `done` marks it with a `✓`, as a `step` would, instead of a `·`.
+	 */
+	list(heading: string, items: string[], done = false) {
+		const marker = done ? pc.green('✓') : pc.blue('·');
+		write(process.stdout, `${marker} ${heading}\n${pc.cyan(wrap(items, ', '))}`);
 	},
 	/** Dimmed context for the prompt that follows, wrapped and indented under it. */
 	note(message: string) {

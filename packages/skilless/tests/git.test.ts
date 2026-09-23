@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'pathe';
 import { describe, expect, it } from 'vitest';
-import { normalizeRemote } from '@/utils/git';
+import { isTracked, normalizeRemote, untrack } from '@/utils/git';
 
 describe('normalizeRemote', () => {
 	it('collapses ssh and https forms of the same repo to one key', () => {
@@ -34,5 +38,32 @@ describe('normalizeRemote', () => {
 	it('rejects what it cannot key on', () => {
 		expect(normalizeRemote('')).toBeNull();
 		expect(normalizeRemote('   ')).toBeNull();
+	});
+});
+
+describe('untrack', () => {
+	it('stages the removal but leaves the files on disk', () => {
+		const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skilless-git-'));
+		const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
+		git('init', '-q');
+		fs.mkdirSync(path.join(repo, '.agents/skills/demo'), { recursive: true });
+		fs.writeFileSync(path.join(repo, '.agents/skills/demo/SKILL.md'), '# demo');
+		git('add', '.');
+
+		expect(isTracked(repo, '.agents/skills/demo')).toBe(true);
+		expect(untrack(repo, '.agents/skills/demo')).toBe(true);
+		expect(isTracked(repo, '.agents/skills/demo')).toBe(false);
+		expect(fs.existsSync(path.join(repo, '.agents/skills/demo/SKILL.md'))).toBe(true);
+
+		fs.rmSync(repo, { recursive: true, force: true });
+	});
+
+	it('fails on a path git does not track', () => {
+		const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'skilless-git-'));
+		execFileSync('git', ['init', '-q'], { cwd: repo });
+
+		expect(untrack(repo, 'missing')).toBe(false);
+
+		fs.rmSync(repo, { recursive: true, force: true });
 	});
 });
