@@ -15,23 +15,32 @@
 	const SKILL_ROW = 40;
 	const PROJECT_ROW = 80;
 
+	// popular skills from skills.sh, in well-known open source repos
 	const skills = [
-		'code-review',
-		'svelte-testing',
-		'update-deps',
-		'resolve-comments',
-		'triage',
-		'animate'
+		'frontend-design',
+		'web-design-guidelines',
+		'agent-browser',
+		'diagnosing-bugs',
+		'grill-me',
+		'find-skills'
 	];
 
 	const projects = [
 		{
-			owner: 'ieedan',
-			name: 'skilless',
-			skills: ['code-review', 'resolve-comments', 'update-deps']
+			owner: 'sveltejs',
+			name: 'kit',
+			skills: ['frontend-design', 'agent-browser', 'diagnosing-bugs']
 		},
-		{ owner: 'acme', name: 'storefront', skills: ['code-review', 'svelte-testing', 'animate'] },
-		{ owner: 'acme', name: 'api', skills: ['update-deps', 'triage'] }
+		{
+			owner: 'vercel',
+			name: 'next.js',
+			skills: ['web-design-guidelines', 'agent-browser', 'grill-me']
+		},
+		{
+			owner: 'shadcn-ui',
+			name: 'ui',
+			skills: ['frontend-design', 'web-design-guidelines', 'find-skills']
+		}
 	];
 
 	const height = skills.length * SKILL_ROW;
@@ -48,7 +57,7 @@
 	type Link = (typeof links)[number];
 	type Selection = { kind: 'skill' | 'project'; name: string };
 
-	let selected = $state<Selection>({ kind: 'project', name: 'skilless' });
+	let selected = $state<Selection>({ kind: 'project', name: 'kit' });
 
 	// drawn at the real width, so strokes keep their weight and dashes their length
 	let width = $state(100);
@@ -120,14 +129,16 @@
 
 		<figure class="border border-border bg-card">
 			<div
-				class="grid grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] border-b border-border px-4 py-3 text-sm md:px-6"
+				class="grid grid-cols-[minmax(0,1.3fr)_36px_minmax(0,1fr)] border-b border-border px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] sm:px-4 md:px-6"
 			>
 				<span class="font-mono text-muted-foreground">~/.skilless/skills</span>
 				<span></span>
 				<span class="pl-4 text-muted-foreground">Your projects</span>
 			</div>
 
-			<div class="grid grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] px-4 py-5 md:px-6">
+			<div
+				class="grid grid-cols-[minmax(0,1.3fr)_36px_minmax(0,1fr)] px-3 py-5 sm:grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] sm:px-4 md:px-6"
+			>
 				<ul class="flex flex-col" aria-label="Skills in your library">
 					{#each skills as skill (skill)}
 						{@const on = skillLit(skill)}
@@ -136,7 +147,7 @@
 								type="button"
 								aria-pressed={isSelected('skill', skill)}
 								onclick={() => (selected = { kind: 'skill', name: skill })}
-								class="flex h-full w-full items-center justify-between gap-2 text-left font-mono text-xs transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm
+								class="flex h-full w-full items-center justify-between gap-2 text-left font-mono text-[11px] transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-xs md:text-sm
 									{on ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'}"
 							>
 								<span class="truncate">{skill}</span>
@@ -192,8 +203,7 @@
 								></span>
 								<span class="flex min-w-0 flex-col">
 									<span class="truncate text-sm font-medium md:text-base"
-										><span class="hidden text-muted-foreground sm:inline">{project.owner}/</span
-										>{project.name}</span
+										><span class="text-muted-foreground">{project.owner}/</span>{project.name}</span
 									>
 									<span class="truncate text-xs text-muted-foreground">
 										{project.skills.length} skills linked
@@ -246,7 +256,8 @@
 						</p>
 						<p class="text-muted-foreground">
 							{#if users.length}
-								It's linked into {users.map((p) => p.name).join(' and ')}. Edit it once and
+								It's linked into {users.map((p) => `${p.owner}/${p.name}`).join(' and ')}. Edit it
+								once and
 								{users.length > 1 ? 'both see' : 'it sees'} the change on the next run.
 							{:else}
 								It isn't in any project yet. Run <code>skilless add {skill}</code> to link it.
