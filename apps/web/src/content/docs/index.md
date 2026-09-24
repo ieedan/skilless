@@ -1,27 +1,32 @@
 ---
 title: Introduction
-description: skilless is a command line tool that keeps one copy of every agent skill and links it into only the projects that need it.
+description: Use your own agent skills in specific projects, including repositories you do not own, without changing those repositories.
 ---
 
-Agent skills are folders of instructions, like a `SKILL.md`, that coding agents such as Claude Code read from the project they're working in. That leaves you two options, and neither is great:
+You may work in projects you own and repositories maintained by other people. A skill that helps in one project may not apply to another. You still need a way to give each agent the relevant skills without changing every repository you clone.
 
-- **Copy skills into every project.** Each copy drifts from the others, they show up in your git history, and you end up committing a `skills` folder to repos that aren't yours.
-- **Install skills at the user level.** Every project on your machine gets every skill, including the ones that make no sense there.
+Copying skills into each project leaves you with duplicate, unversioned Markdown files to maintain. Installing them at the user level avoids those copies, but makes every skill available in every project. Committing the skills solves neither problem when they are part of your workflow rather than the repository.
 
-skilless keeps every skill in a single library on your machine and links each one into the projects you choose. Edit a skill once and every project that uses it sees the change. Nothing is committed: skilless tells git to ignore the links, so your repos look exactly as they did before.
+skilless stores one copy of each skill and links it only into the projects you choose. It excludes those links from Git, so you can use your skills in any local clone without adding a skills folder to its history.
 
 ```bash
 npx skilless init
 ```
 
-## What you get
+## One copy of each skill
 
-- **One source of truth.** Your skills live in `~/.skilless/skills`. Projects link to them, so there's nothing to keep in sync by hand.
-- **Skills per project.** Each project gets only the skills you add to it.
-- **Invisible to git.** Links are listed in `.git/info/exclude`, which is never committed, so teammates and pull requests never see them.
-- **Works offline.** The library is local first. Signing in is optional.
-- **Cloud when you want it.** Sign in to [sync your library](/docs/cloud/sync) across machines and [install skills in cloud agents](/docs/cloud/cloud-agents).
+Each project link points to the copy in `~/.skilless/skills`. When you edit that copy, every project using it reads the update. You do not have to find and update separate Markdown files.
+
+## No changes to the repository
+
+skilless adds its links to `.git/info/exclude`. Unlike `.gitignore`, this file stays in your local clone. The links do not appear as tracked changes or enter the repository's history.
+
+This matters when you do not own the project or when your teammates use different agent setups. You can configure your agent without requiring anyone else to use the same skills.
+
+## Local by default
+
+The library also works without an account or network connection. Sign in only if you want to [sync skills across machines](/docs/cloud/sync) or [install them in cloud agents](/docs/cloud/cloud-agents).
 
 ## Next steps
 
-Start with the [quick start](/docs/quick-start), then read [how it works](/docs/how-it-works) to see exactly what skilless writes to disk.
+Start with the [quick start](/docs/quick-start). If you want to understand the linking and git behavior before installing anything, read [how it works](/docs/how-it-works).
