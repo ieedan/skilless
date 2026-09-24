@@ -129,14 +129,6 @@
 
 		<figure class="border border-border bg-card">
 			<div
-				class="grid grid-cols-[minmax(0,1.3fr)_36px_minmax(0,1fr)] border-b border-border px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] sm:px-4 md:px-6"
-			>
-				<span class="font-mono text-muted-foreground">~/.skilless/skills</span>
-				<span></span>
-				<span class="pl-4 text-muted-foreground">Your projects</span>
-			</div>
-
-			<div
 				class="grid grid-cols-[minmax(0,1.3fr)_36px_minmax(0,1fr)] px-3 py-5 sm:grid-cols-[minmax(0,1fr)_minmax(40px,22%)_minmax(0,1fr)] sm:px-4 md:px-6"
 			>
 				<ul class="flex flex-col" aria-label="Skills in your library">
