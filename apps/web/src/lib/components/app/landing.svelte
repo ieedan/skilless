@@ -59,14 +59,12 @@
 	const lit = $derived(links.filter(isLit));
 
 	/**
-	 * A link's curve. Traced from whichever end was picked, so the draw-in
-	 * animation runs outward from the selection.
+	 * A link's curve, always traced from the skill to the project: the draw-in
+	 * animation follows it, so skills visibly flow into the projects using them.
 	 */
-	const curve = (link: Link, fromProject: boolean) => {
+	const curve = (link: Link) => {
 		const mid = width / 2;
-		return fromProject
-			? `M${width} ${link.to} C${mid} ${link.to}, ${mid} ${link.from}, 0 ${link.from}`
-			: `M0 ${link.from} C${mid} ${link.from}, ${mid} ${link.to}, ${width} ${link.to}`;
+		return `M0 ${link.from} C${mid} ${link.from}, ${mid} ${link.to}, ${width} ${link.to}`;
 	};
 
 	const skillLit = (skill: string) =>
@@ -113,8 +111,9 @@
 				</p>
 			</div>
 
+			<!-- one height for both, so they line up side by side or wrapped -->
 			<div class="flex flex-wrap items-center gap-3">
-				<Snippet command="npx {APP_NAME} init" />
+				<Snippet command="npx {APP_NAME} init" class="h-12 py-0" />
 				<Button href="/login" size="lg" variant="outline" class="h-12">Get started</Button>
 			</div>
 		</section>
@@ -141,11 +140,9 @@
 									{on ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'}"
 							>
 								<span class="truncate">{skill}</span>
-								<!-- a far end fills as its line arrives -->
 								<span
 									class="size-2 shrink-0 border transition-colors
-										{on ? 'border-foreground bg-foreground' : 'border-muted-foreground/50 bg-card'}
-										{on && selected.kind === 'project' ? 'delay-300' : ''}"
+										{on ? 'border-foreground bg-foreground' : 'border-muted-foreground/50 bg-card'}"
 								></span>
 							</button>
 						</li>
@@ -155,7 +152,7 @@
 				<div bind:clientWidth={width} style="height: {height}px">
 					<svg {width} {height} viewBox="0 0 {width} {height}" class="block" aria-hidden="true">
 						{#each links as link (link.skill + link.project)}
-							<path d={curve(link, false)} fill="none" class="stroke-border" stroke-width="1" />
+							<path d={curve(link)} fill="none" class="stroke-border" stroke-width="1" />
 						{/each}
 
 						<!--
@@ -165,7 +162,7 @@
 						{#key selected}
 							{#each lit as link, i (link.skill + link.project)}
 								<path
-									d={curve(link, selected.kind === 'project')}
+									d={curve(link)}
 									fill="none"
 									pathLength="1"
 									class="link-draw stroke-foreground"
@@ -188,10 +185,10 @@
 								class="flex h-full w-full items-center gap-3 text-left transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50
 									{on ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'}"
 							>
+								<!-- fills once the lines flowing into it arrive -->
 								<span
 									class="size-2 shrink-0 border transition-colors
-										{on ? 'border-foreground bg-foreground' : 'border-muted-foreground/50 bg-card'}
-										{on && selected.kind === 'skill' ? 'delay-300' : ''}"
+										{on ? 'border-foreground bg-foreground delay-300' : 'border-muted-foreground/50 bg-card'}"
 								></span>
 								<span class="flex min-w-0 flex-col">
 									<span class="truncate text-sm font-medium md:text-base"
