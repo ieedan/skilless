@@ -274,8 +274,7 @@
 						Sync skills with the cloud
 					</h2>
 					<p class="text-lg leading-relaxed text-muted-foreground">
-						The CLI is all you need on one machine. Sign in to {APP_NAME} cloud and your library follows
-						you to every computer, every cloud agent and the browser.
+						{APP_NAME} cloud syncs your skills library across every machine, and cloud agent.
 					</p>
 					<div class="flex flex-wrap gap-3">
 						{#if signedIn}
@@ -323,11 +322,6 @@
 				</div>
 			</dl>
 		</div>
-	</section>
-
-	<section class="flex flex-col items-center gap-7 border-t border-border px-6 py-24 text-center">
-		<h2 class="text-4xl font-semibold tracking-tight">Go Skilless</h2>
-		<Button href="/docs" size="lg">Get started</Button>
 	</section>
 
 	<SiteFooter {signedIn} />
