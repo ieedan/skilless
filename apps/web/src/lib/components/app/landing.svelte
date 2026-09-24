@@ -99,6 +99,7 @@
 		</a>
 
 		<nav class="flex items-center gap-3">
+			<Button href="/docs" variant="ghost">Docs</Button>
 			{#if signedIn}
 				<Button href="/skills">Dashboard</Button>
 			{:else}
@@ -123,7 +124,7 @@
 			<!-- one height for both, so they line up side by side or wrapped -->
 			<div class="flex flex-wrap items-center gap-3">
 				<Snippet command="npx {APP_NAME} init" class="h-12 py-0" />
-				<Button href="/login" size="lg" variant="outline" class="h-12">Get started</Button>
+				<Button href="/docs" size="lg" variant="outline" class="h-12">Get started</Button>
 			</div>
 		</section>
 
@@ -269,28 +270,71 @@
 			</figcaption>
 		</figure>
 		<p class="mt-3 text-sm text-muted-foreground">Pick a skill or a project to trace its links.</p>
-
-		<section class="grid gap-10 py-24 md:grid-cols-2 md:gap-16 md:py-32">
-			<div class="flex flex-col gap-3">
-				<h2 class="text-2xl font-semibold tracking-tight">Every machine, one library</h2>
-				<p class="leading-relaxed text-muted-foreground">
-					Sign in with <code>skilless auth</code> and <code>skilless sync</code> keeps your library the
-					same on every computer, in both directions, deletions included.
-				</p>
-			</div>
-			<div class="flex flex-col gap-3">
-				<h2 class="text-2xl font-semibold tracking-tight">Cloud agents too</h2>
-				<p class="leading-relaxed text-muted-foreground">
-					Add <code>SKILLESS_TOKEN=… npx skilless install</code> to an agent's setup step and it gets
-					the same skills your project has locally.
-				</p>
-			</div>
-		</section>
 	</main>
+
+	<!-- the CLI is the product; the cloud is the optional layer on top of it -->
+	<section class="mt-24 border-t border-border md:mt-32">
+		<div class="mx-auto flex w-full max-w-5xl flex-col gap-16 px-6 py-24 md:py-32">
+			<div class="grid grid-cols-[minmax(0,1fr)] gap-10 md:grid-cols-2 md:items-center md:gap-16">
+				<div class="flex flex-col gap-6">
+					<h2 class="text-4xl font-semibold tracking-tight text-balance">
+						Sync skills with the cloud
+					</h2>
+					<p class="text-lg leading-relaxed text-muted-foreground">
+						The CLI is all you need on one machine. Sign in to {APP_NAME} cloud and your library follows
+						you to every computer, every cloud agent and the browser.
+					</p>
+					<div class="flex flex-wrap gap-3">
+						{#if signedIn}
+							<Button href="/skills" size="lg">Open your library</Button>
+						{:else}
+							<Button href="/login" size="lg">Create an account</Button>
+						{/if}
+						<Button href="/docs/cloud/sync" size="lg" variant="outline">How sync works</Button>
+					</div>
+				</div>
+
+				<div
+					class="flex flex-col overflow-x-auto border border-border bg-card px-5 py-4 font-mono text-xs leading-6 whitespace-nowrap md:text-[13px]"
+				>
+					<span>$ skilless auth</span>
+					<span class="text-chart-2">✔ Signed in to skilless.dev.</span>
+					<span class="mt-3">$ skilless sync</span>
+					<span class="text-chart-2">✔ Pushed frontend-design to skilless.dev.</span>
+					<span class="text-chart-2">✔ Pulled grill-me from skilless.dev.</span>
+					<span class="text-chart-2">✔ Linked grill-me into this project.</span>
+				</div>
+			</div>
+
+			<dl class="grid grid-cols-[minmax(0,1fr)] gap-10 border-t border-border pt-12 md:grid-cols-3">
+				<div class="flex flex-col gap-2">
+					<dt class="font-semibold">Every machine</dt>
+					<dd class="leading-relaxed text-muted-foreground">
+						<code>skilless sync</code> runs both ways: edits, new skills and deletions. Changes made offline
+						go up the next time you're connected.
+					</dd>
+				</div>
+				<div class="flex flex-col gap-2">
+					<dt class="font-semibold">Cloud agents</dt>
+					<dd class="leading-relaxed text-muted-foreground">
+						Give an agent a token and <code>npx skilless install</code> sets up the project's skills.
+						The Claude Code plugin does it at the start of every session.
+					</dd>
+				</div>
+				<div class="flex flex-col gap-2">
+					<dt class="font-semibold">In the browser</dt>
+					<dd class="leading-relaxed text-muted-foreground">
+						Read and edit your skills on skilless.dev, see what each project uses, and restore
+						anything deleted in the last 30 days.
+					</dd>
+				</div>
+			</dl>
+		</div>
+	</section>
 
 	<section class="flex flex-col items-center gap-7 border-t border-border px-6 py-24 text-center">
 		<h2 class="text-4xl font-semibold tracking-tight">Go Skilless</h2>
-		<Button href="/login" size="lg">Get started</Button>
+		<Button href="/docs" size="lg">Get started</Button>
 	</section>
 </div>
 

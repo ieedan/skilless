@@ -177,8 +177,120 @@
 
 	/* Inline code in prose: Geist Mono runs larger than Geist and its
 	   fixed-width space leaves wide gaps (e.g. "skilless add"). */
-	p code {
+	p code,
+	dd code {
 		font-size: 0.9em;
 		word-spacing: -0.25em;
+	}
+}
+
+/*
+ * Docs pages are compiled markdown (mdsx), so their elements arrive bare and
+ * are styled here. Code is highlighted at build time by rehype-pretty-code,
+ * which leaves both themes' colours on each token as CSS variables.
+ */
+@layer components {
+	.docs-prose {
+		@apply leading-7 text-foreground;
+
+		& > * + * {
+			@apply mt-5;
+		}
+
+		& h2 {
+			@apply mt-14 scroll-mt-20 border-b border-border pb-2 text-2xl font-semibold tracking-tight;
+		}
+
+		& h3 {
+			@apply mt-10 scroll-mt-20 text-lg font-semibold tracking-tight;
+		}
+
+		& h2 + *,
+		& h3 + * {
+			@apply mt-4;
+		}
+
+		& p,
+		& li {
+			@apply text-pretty;
+		}
+
+		& a {
+			@apply font-medium underline underline-offset-4;
+		}
+
+		& ul,
+		& ol {
+			@apply ml-6 flex flex-col gap-2;
+		}
+
+		& ul {
+			@apply list-disc;
+		}
+
+		& ol {
+			@apply list-decimal;
+		}
+
+		& strong {
+			@apply font-semibold;
+		}
+
+		& blockquote {
+			@apply border-l-2 border-border pl-4 text-muted-foreground;
+		}
+
+		& hr {
+			@apply my-10 border-border;
+		}
+
+		& table {
+			@apply block w-full overflow-x-auto text-sm;
+		}
+
+		& th {
+			@apply border-b border-border px-3 py-2 text-left font-medium whitespace-nowrap;
+		}
+
+		& td {
+			@apply border-b border-border px-3 py-2 align-top;
+		}
+
+		& th:first-child,
+		& td:first-child {
+			@apply pl-0;
+		}
+
+		& :not(pre) > code {
+			@apply rounded-sm bg-muted px-[0.35em] py-[0.15em] font-mono text-[0.85em];
+		}
+
+		& td:first-child > code {
+			@apply whitespace-nowrap;
+		}
+
+		& pre {
+			@apply overflow-x-auto rounded-lg border border-border bg-card py-4 font-mono text-[13px] leading-6;
+		}
+
+		& pre code {
+			@apply grid;
+		}
+
+		& pre [data-line] {
+			@apply px-4;
+		}
+	}
+
+	.docs-prose [data-rehype-pretty-code-figure] {
+		@apply m-0;
+	}
+
+	.docs-prose [data-rehype-pretty-code-figure] code span {
+		color: var(--shiki-light);
+	}
+
+	.dark .docs-prose [data-rehype-pretty-code-figure] code span {
+		color: var(--shiki-dark);
 	}
 }
