@@ -11,7 +11,7 @@
  * of truth for the values, this file is the source of truth for the app.
  *
  * Deliberate departures from stock shadcn, both made in the design file first:
- *   - every radius is 0
+ *   - every radius step (sm → xl) is the one --radius, 0.4rem
  *   - dark --border / --input are lifted off shadcn's white-at-10%, which is
  *     invisible against a near-black background
  *
