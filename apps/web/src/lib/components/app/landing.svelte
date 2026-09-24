@@ -2,6 +2,7 @@
 	import { APP_NAME } from '$lib/constants';
 	import { Button } from '$lib/components/ui/button';
 	import Logo from './logo.svelte';
+	import SiteFooter from './site-footer.svelte';
 	import Snippet from './snippet.svelte';
 
 	let { signedIn = false }: { signedIn?: boolean } = $props();
@@ -328,6 +329,8 @@
 		<h2 class="text-4xl font-semibold tracking-tight">Go Skilless</h2>
 		<Button href="/docs" size="lg">Get started</Button>
 	</section>
+
+	<SiteFooter {signedIn} />
 </div>
 
 <style>

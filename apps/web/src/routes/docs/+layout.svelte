@@ -5,6 +5,7 @@
 	import DocsNav from '$lib/components/docs/docs-nav.svelte';
 	import GithubLogo from '$lib/components/app/github-logo.svelte';
 	import Logo from '$lib/components/app/logo.svelte';
+	import SiteFooter from '$lib/components/app/site-footer.svelte';
 
 	let { data, children } = $props();
 
@@ -73,4 +74,6 @@
 			{@render children()}
 		</div>
 	</div>
+
+	<SiteFooter signedIn={data.signedIn} class="max-w-7xl px-4 md:px-6" />
 </div>
