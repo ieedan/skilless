@@ -6,8 +6,8 @@ const cli = program
 	.name(NAME)
 	.description(DESCRIPTION)
 	.version(VERSION)
+	.commandsGroup('Commands:')
 	.addCommand(commands.init)
-	.addCommand(commands.auth)
 	.addCommand(commands.create)
 	.addCommand(commands.add)
 	.addCommand(commands.update)
@@ -15,10 +15,15 @@ const cli = program
 	.addCommand(commands.deleteCommand)
 	.addCommand(commands.install)
 	.addCommand(commands.vendor)
-	.addCommand(commands.sync)
 	.addCommand(commands.importCommand)
 	.addCommand(commands.migrate)
 	.addCommand(commands.list)
-	.addCommand(commands.config);
+	.addCommand(commands.config)
+	.commandsGroup('Cloud Commands (skilless.dev):')
+	.addCommand(commands.auth)
+	.addCommand(commands.sync)
+	// Put the built-in help command back with the regular commands.
+	.commandsGroup('Commands:')
+	.helpCommand(true);
 
 export { cli };
