@@ -91,6 +91,21 @@
 		selected.kind === kind && selected.name === name;
 
 	const usedBy = (skill: string) => projects.filter((p) => p.skills.includes(skill));
+
+	const syncDetails = [
+		{
+			title: 'Every machine',
+			text: 'Keep one skills library in sync across all your computers. Make a change on one and pick it up on the next.'
+		},
+		{
+			title: 'Cloud agents',
+			text: 'Bring the same skills into remote and ephemeral agent environments, without setting them up by hand.'
+		},
+		{
+			title: 'In the browser',
+			text: 'Browse, edit, and organize your skills from anywhere, even when you are away from your development machine.'
+		}
+	];
 </script>
 
 <div class="flex min-h-dvh flex-col bg-background">
@@ -299,27 +314,12 @@
 			</div>
 
 			<dl class="grid grid-cols-[minmax(0,1fr)] gap-10 border-t border-border pt-12 md:grid-cols-3">
-				<div class="flex flex-col gap-2">
-					<dt class="font-semibold">Every machine</dt>
-					<dd class="leading-relaxed text-muted-foreground">
-						<code>skilless sync</code> runs both ways: edits, new skills and deletions. Changes made offline
-						go up the next time you're connected.
-					</dd>
-				</div>
-				<div class="flex flex-col gap-2">
-					<dt class="font-semibold">Cloud agents</dt>
-					<dd class="leading-relaxed text-muted-foreground">
-						Give an agent a token and <code>npx skilless install</code> sets up the project's skills.
-						The Claude Code plugin does it at the start of every session.
-					</dd>
-				</div>
-				<div class="flex flex-col gap-2">
-					<dt class="font-semibold">In the browser</dt>
-					<dd class="leading-relaxed text-muted-foreground">
-						Read and edit your skills on skilless.dev, see what each project uses, and restore
-						anything deleted in the last 30 days.
-					</dd>
-				</div>
+				{#each syncDetails as detail (detail.title)}
+					<div class="flex flex-col gap-2">
+						<dt class="font-semibold">{detail.title}</dt>
+						<dd class="leading-relaxed text-muted-foreground">{detail.text}</dd>
+					</div>
+				{/each}
 			</dl>
 		</div>
 	</section>
