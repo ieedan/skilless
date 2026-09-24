@@ -268,7 +268,6 @@
 				{/each}
 			</figcaption>
 		</figure>
-		<p class="mt-3 text-sm text-muted-foreground">Pick a skill or a project to trace its links.</p>
 
 		<section class="grid gap-10 py-24 md:grid-cols-2 md:gap-16 md:py-32">
 			<div class="flex flex-col gap-3">
