@@ -269,7 +269,6 @@
 				{/each}
 			</figcaption>
 		</figure>
-		<p class="mt-3 text-sm text-muted-foreground">Pick a skill or a project to trace its links.</p>
 	</main>
 
 	<!-- the CLI is the product; the cloud is the optional layer on top of it -->
