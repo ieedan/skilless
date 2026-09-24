@@ -2,6 +2,7 @@
 	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
 	import RiArrowRightSLine from 'remixicon-svelte/icons/arrow-right-s-line';
 	import { cn } from '$lib/utils.js';
+	import { getSubAnchor } from './sub-anchor.svelte';
 
 	let {
 		ref = $bindable(null),
@@ -12,6 +13,9 @@
 	}: DropdownMenuPrimitive.SubTriggerProps & {
 		inset?: boolean;
 	} = $props();
+
+	const anchor = getSubAnchor();
+	if (anchor) anchor.trigger = () => ref;
 </script>
 
 <DropdownMenuPrimitive.SubTrigger

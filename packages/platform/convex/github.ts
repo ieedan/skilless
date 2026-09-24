@@ -1,10 +1,13 @@
 import type { GenericActionCtx } from 'convex/server';
 import { v } from 'convex/values';
 import { env } from '../env.convex';
+import { internal } from './_generated/api';
 import type { DataModel } from './_generated/dataModel';
+import { internalAction, internalMutation } from './_generated/server';
 import { createAuth } from './auth';
 import { convexError, createConvexError } from './errors';
-import { action, requireUser, secretAction } from './utils';
+import { isGithubKey } from './model';
+import { action, mutation, query, requireUser, secretAction } from './utils';
 
 export type GithubRepo = {
 	/** `owner/name` */
@@ -12,6 +15,7 @@ export type GithubRepo = {
 	private: boolean;
 	defaultBranch: string;
 	cloneUrl: string;
+	description: string | null;
 };
 
 /**
@@ -49,6 +53,7 @@ type RawRepo = {
 	private: boolean;
 	default_branch: string;
 	clone_url: string;
+	description: string | null;
 };
 
 /** Every repo the user can reach through an installation of the app. */
@@ -66,7 +71,8 @@ async function listRepos(token: string): Promise<GithubRepo[]> {
 				fullName: repo.full_name,
 				private: repo.private,
 				defaultBranch: repo.default_branch,
-				cloneUrl: repo.clone_url
+				cloneUrl: repo.clone_url,
+				description: repo.description?.trim() || null
 			});
 		}
 		if (batch.length < 100) return repos;
@@ -76,7 +82,146 @@ async function listRepos(token: string): Promise<GithubRepo[]> {
 /** Where to send a user to grant the app access to more repos or orgs. */
 const installUrl = `https://github.com/apps/${env.GITHUB_APP_SLUG}/installations/new`;
 
+/**
+ * A repo's GitHub description. Tries the user's token first so private repos the
+ * app is installed on resolve, then falls back to an anonymous request for
+ * public ones.
+ *
+ * `unreachable` means every attempt came back 404: the repo is private and not
+ * shared with the app (or gone). Anything else that fails, a rate limit or a
+ * network error, is just `found` with no description, since installing the app
+ * would not fix it.
+ */
+async function describeRepo(
+	token: string | null,
+	path: string
+): Promise<{ status: 'found'; description: string | null } | { status: 'unreachable' }> {
+	let notFound = true;
+	for (const auth of token ? [token, null] : [null]) {
+		const response = await fetch(`https://api.github.com/repos/${path}`, {
+			headers: {
+				...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+				Accept: 'application/vnd.github+json',
+				'User-Agent': 'skilless',
+				'X-GitHub-Api-Version': '2022-11-28'
+			}
+		}).catch(() => null);
+		if (response?.ok) {
+			const repo = (await response.json()) as { description: string | null };
+			return { status: 'found', description: repo.description?.trim() || null };
+		}
+		if (response?.status !== 404) notFound = false;
+	}
+	return notFound ? { status: 'unreachable' } : { status: 'found', description: null };
+}
+
 /* ---------------------------------------------------------------- website */
+
+/** How long a cached description is trusted before a view of the project pages refreshes it. */
+const REPO_TTL = 60 * 60 * 1000;
+
+/** Where the project pages send a user to share a private repo. */
+export const installLink = query({
+	args: {},
+	handler: async () => installUrl
+});
+
+/**
+ * Queues a lookup of the user's GitHub projects that were never looked up or
+ * have gone stale. The project list is live, so what it finds lands on the page
+ * without a reload, and until then the page shows the cached copy.
+ */
+export const refreshStale = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const userId = await requireUser(ctx);
+		const now = Date.now();
+
+		const stale = (
+			await ctx.db
+				.query('projects')
+				.withIndex('by_user', (q) => q.eq('userId', userId))
+				.collect()
+		).filter(
+			(project) =>
+				isGithubKey(project.key) && (!project.repo || now - project.repo.checkedAt > REPO_TTL)
+		);
+
+		if (stale.length === 0) return;
+		await ctx.scheduler.runAfter(0, internal.github.refresh, {
+			userId,
+			projects: stale.map((project) => ({ id: project._id, key: project.key }))
+		});
+	}
+});
+
+/** Looks the projects up on GitHub and caches the result on each. Best effort per repo. */
+export const refresh = internalAction({
+	args: {
+		userId: v.string(),
+		projects: v.array(v.object({ id: v.id('projects'), key: v.string() }))
+	},
+	handler: async (ctx, args) => {
+		let token: string | null = null;
+		try {
+			token = await githubToken(ctx, args.userId);
+		} catch {
+			// signed in some other way, or the refresh token expired
+		}
+
+		const repos = await Promise.all(
+			args.projects.map(async ({ id, key }) => {
+				const result = await describeRepo(token, key.slice('github.com/'.length));
+				return {
+					id,
+					description: result.status === 'found' ? result.description : null,
+					reachable: result.status === 'found'
+				};
+			})
+		);
+
+		await ctx.runMutation(internal.github.saveRepos, { repos });
+	}
+});
+
+export const saveRepos = internalMutation({
+	args: {
+		repos: v.array(
+			v.object({
+				id: v.id('projects'),
+				description: v.union(v.string(), v.null()),
+				reachable: v.boolean()
+			})
+		)
+	},
+	handler: async (ctx, args) => {
+		const checkedAt = Date.now();
+		for (const { id, description, reachable } of args.repos) {
+			// the project may have been deleted while GitHub was answering
+			if (await ctx.db.get(id)) {
+				await ctx.db.patch(id, { repo: { description, reachable, checkedAt } });
+			}
+		}
+	}
+});
+
+/**
+ * Whether the user has installed the app on any account, checked after sign-in
+ * so a new user is sent to pick repos before they find private ones missing.
+ * Signing in only authorizes the app; installing it is a separate step GitHub
+ * never prompts for on its own.
+ */
+export const installation = action({
+	args: {},
+	handler: async (ctx): Promise<{ installed: boolean; installUrl: string }> => {
+		const token = await githubToken(ctx, await requireUser(ctx));
+		const { total_count } = await github<{ total_count: number }>(
+			token,
+			'/user/installations?per_page=1'
+		);
+		return { installed: total_count > 0, installUrl };
+	}
+});
 
 export const repos = action({
 	args: {},

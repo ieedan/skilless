@@ -57,7 +57,14 @@ describe('makeTemp', () => {
 	});
 
 	it('is removed on ctrl-c', async () => {
-		const { dir, code } = await inChild('/* READY */ setInterval(() => {}, 1000);');
+		// Windows has no signals to send: `child.kill('SIGINT')` terminates the
+		// process outright, so no handler could ever run. Raise it from inside
+		// instead, which still goes through the real listener.
+		const { dir, code } = await inChild(
+			process.platform === 'win32'
+				? `process.emit('SIGINT', 'SIGINT'); setInterval(() => {}, 1000);`
+				: '/* READY */ setInterval(() => {}, 1000);'
+		);
 
 		expect(code).toBe(130);
 		expect(dir).not.toBe('');

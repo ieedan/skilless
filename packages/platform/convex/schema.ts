@@ -61,7 +61,20 @@ export default defineSchema({
 	/** A project, keyed by its normalized git remote e.g. `github.com/ieedan/layerchart`. */
 	projects: defineTable({
 		userId: v.string(),
-		key: v.string()
+		key: v.string(),
+		/**
+		 * GitHub's view of the repo, cached by `github.refresh` so the project pages
+		 * render it straight off. Absent until the first lookup, and never set for
+		 * other hosts. `reachable` is false for a private repo the app is not
+		 * installed on.
+		 */
+		repo: v.optional(
+			v.object({
+				description: v.union(v.string(), v.null()),
+				reachable: v.boolean(),
+				checkedAt: v.number()
+			})
+		)
 	})
 		.index('by_user_and_key', ['userId', 'key'])
 		.index('by_user', ['userId']),

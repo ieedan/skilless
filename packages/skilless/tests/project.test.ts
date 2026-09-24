@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { normalize } from 'pathe';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let tmp: string;
@@ -217,7 +218,10 @@ describe('vendor', () => {
 		expect(project.blocking(repo, 'triage')).toEqual([]);
 
 		fs.mkdirSync(path.join(repo, '.agents/skills/mine'), { recursive: true });
-		expect(project.blocking(repo, 'mine')).toEqual([path.join(repo, '.agents/skills/mine')]);
+		// the CLI builds paths with pathe, which uses forward slashes on Windows too
+		expect(project.blocking(repo, 'mine')).toEqual([
+			normalize(path.join(repo, '.agents/skills/mine'))
+		]);
 	});
 
 	it('does not block on a committed copy', async () => {
