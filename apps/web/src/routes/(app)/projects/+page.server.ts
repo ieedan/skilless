@@ -2,29 +2,33 @@ import { api } from '@skilless/platform';
 import { convexLoad } from 'convex-svelte/sveltekit';
 
 // Live, like the skills list, so a `skilless add` in another terminal shows up
-// here without a reload.
+// here without a reload. GitHub descriptions are cached on each project and
+// refreshed in the background when stale; the live list picks the result up.
 export async function load({ locals }) {
-	const [skills, projects] = await Promise.all([
+	const [skills, projects, installUrl] = await Promise.all([
 		convexLoad(api.skills.list, {}),
-		convexLoad(api.projects.list, {})
+		convexLoad(api.projects.list, {}),
+		locals.convex.query(api.github.installLink, {}),
+		// only queues the lookup, so this never waits on GitHub
+		locals.convex.mutation(api.github.refreshStale, {}).catch(() => {})
 	]);
 
-	return {
-		skills,
-		projects,
-		/**
-		 * Streamed rather than awaited: they come from GitHub, one request per
-		 * repo, and the list is useful before they land. Projects added after
-		 * this load simply go without until the next one.
-		 */
-		descriptions: describe(
-			locals,
-			(projects.data ?? []).map((project) => project.key)
-		)
-	};
+	// Every repo the GitHub app can see, for the ones without skills yet. Streamed,
+	// so the list renders without waiting on GitHub; empty when signed in some
+	// other way or the lookup fails.
+	const repos = locals.convex
+		.action(api.github.repos, {})
+		.then(({ repos }) => repos)
+		.catch(() => []);
+
+	return { skills, projects, installUrl, repos };
 }
 
-function describe(locals: App.Locals, keys: string[]): Promise<Record<string, string | null>> {
-	if (keys.length === 0) return Promise.resolve({});
-	return locals.convex.action(api.github.describe, { keys }).catch(() => ({}));
-}
+export const actions = {
+	remove: async ({ locals, request }) => {
+		const data = await request.formData();
+		await locals.convex.mutation(api.projects.remove, {
+			projectId: String(data.get('projectId')) as never
+		});
+	}
+};

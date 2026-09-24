@@ -11,7 +11,68 @@ export type MenuSkill = {
 	projectIds: string[];
 };
 
-export type MenuProject = { _id: string; key: string };
+export type MenuProject = {
+	_id: string;
+	key: string;
+	/** A GitHub repo with no project yet. `_id` is the key; binding a skill creates the project. */
+	unsaved?: boolean;
+};
+
+/**
+ * How long a settled change waits for the live query to catch up before the
+ * server's value is trusted again, in case the push never matches (another
+ * tab changed it back in the meantime).
+ */
+const CATCH_UP_MS = 5000;
+
+/**
+ * An optimistic value for one toggle. It outlives its request: the action
+ * returns before the live query pushes the change, and dropping it on return
+ * would flash the old value until the push lands. It goes once the server
+ * agrees, or after `CATCH_UP_MS`.
+ */
+class Optimistic {
+	#values = $state<Record<string, boolean>>({});
+	/** Latest request per key, so an older one settling does not clear a newer value. */
+	#requests: Record<string, number> = {};
+	/** Keys whose latest request has settled, and now only wait on the push. */
+	#settled = new Set<string>();
+
+	read(key: string, server: boolean) {
+		const value = this.#values[key];
+		if (value === undefined) return server;
+
+		if (value === server && this.#settled.has(key)) {
+			// caught up. Cleared after this read, since state cannot change mid-derive.
+			queueMicrotask(() => this.#clear(key, this.#requests[key]));
+		}
+		return value;
+	}
+
+	async run(key: string, value: boolean, request: () => Promise<boolean>) {
+		const id = (this.#requests[key] ?? 0) + 1;
+		this.#requests[key] = id;
+		this.#settled.delete(key);
+		this.#values[key] = value;
+
+		const ok = await request().catch(() => false);
+		if (this.#requests[key] !== id) return;
+
+		if (!ok) {
+			this.#clear(key, id);
+			return;
+		}
+
+		this.#settled.add(key);
+		setTimeout(() => this.#clear(key, id), CATCH_UP_MS);
+	}
+
+	#clear(key: string, id: number | undefined) {
+		if (this.#requests[key] !== id) return;
+		delete this.#values[key];
+		this.#settled.delete(key);
+	}
+}
 
 /**
  * What the skill menu does, shared by the skills list and a skill's own page.
@@ -24,54 +85,52 @@ export type MenuProject = { _id: string; key: string };
  */
 export class SkillActions {
 	/** Keyed `skillId:projectId`. */
-	#pending = $state<Record<string, boolean>>({});
+	#bindings = new Optimistic();
 	/** Keyed by skill id. */
-	#pendingGlobal = $state<Record<string, boolean>>({});
+	#globals = new Optimistic();
 
 	/** Every page using this is fed by live `convexLoad` queries, so there is nothing to invalidate. */
 	#options = { keepFocus: true, invalidate: false };
 
 	isBound(skill: MenuSkill, project: MenuProject) {
-		return this.#pending[`${skill._id}:${project._id}`] ?? skill.projectIds.includes(project._id);
+		return this.#bindings.read(
+			`${skill._id}:${project._id}`,
+			skill.projectIds.includes(project._id)
+		);
 	}
 
 	isGlobal(skill: MenuSkill) {
-		return this.#pendingGlobal[skill._id] ?? skill.global === true;
+		return this.#globals.read(skill._id, skill.global === true);
 	}
 
-	async setBinding(skill: MenuSkill, project: MenuProject, bound: boolean) {
-		const key = `${skill._id}:${project._id}`;
-		this.#pending[key] = bound;
-
-		try {
+	setBinding(skill: MenuSkill, project: MenuProject, bound: boolean) {
+		return this.#bindings.run(`${skill._id}:${project._id}`, bound, async () => {
 			const result = await submitAction(
 				'/skills?/setBinding',
-				{ skillId: skill._id, projectId: project._id, bound: String(bound) },
+				{
+					skillId: skill._id,
+					...(project.unsaved ? { projectKey: project.key } : { projectId: project._id }),
+					bound: String(bound)
+				},
 				this.#options
-			);
-			if (result.type !== 'success') toast.error(`Could not update ${project.key}`);
-		} catch {
+			).catch(() => null);
+			if (result?.type === 'success') return true;
 			toast.error(`Could not update ${project.key}`);
-		} finally {
-			delete this.#pending[key];
-		}
+			return false;
+		});
 	}
 
-	async setGlobal(skill: MenuSkill, global: boolean) {
-		this.#pendingGlobal[skill._id] = global;
-
-		try {
+	setGlobal(skill: MenuSkill, global: boolean) {
+		return this.#globals.run(skill._id, global, async () => {
 			const result = await submitAction(
 				'/skills?/setGlobal',
 				{ name: skill.name, global: String(global) },
 				this.#options
-			);
-			if (result.type !== 'success') toast.error(`Could not update ${skill.name}`);
-		} catch {
+			).catch(() => null);
+			if (result?.type === 'success') return true;
 			toast.error(`Could not update ${skill.name}`);
-		} finally {
-			delete this.#pendingGlobal[skill._id];
-		}
+			return false;
+		});
 	}
 
 	async copyInstall(skill: MenuSkill) {

@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/constants';
 	import { projectParts } from '$lib/project';
 	import { SkillActions } from '$lib/skill-actions.svelte';
 	import PageActions from '$lib/components/app/page-actions.svelte';
+	import ProjectMenu from '$lib/components/app/project-menu.svelte';
 	import ProjectIcon from '$lib/components/app/project-icon.svelte';
 	import ReadingColumn from '$lib/components/app/reading-column.svelte';
 	import SkillRow from '$lib/components/app/skill-row.svelte';
@@ -55,16 +57,28 @@
 				{parts.path}
 			</h1>
 
-			{#await data.description}
-				{#if parts.host === 'github'}
-					<Skeleton class="my-1 h-3.5 w-2/3" />
-				{/if}
-			{:then description}
-				{#if description}
-					<p class="text-sm leading-relaxed text-muted-foreground">{description}</p>
-				{/if}
-			{/await}
+			{#if project?.repo?.description}
+				<p class="text-sm leading-relaxed text-muted-foreground">{project.repo.description}</p>
+			{:else if project?.repo?.reachable === false}
+				<p class="text-sm leading-relaxed text-muted-foreground">
+					Private repo, not shared with {APP_NAME}.
+					<a
+						href="{data.installUrl}?state={encodeURIComponent(page.url.pathname)}"
+						class="font-medium text-foreground underline underline-offset-2"
+					>
+						Install the GitHub app
+					</a>
+					to show its details.
+				</p>
+			{:else if project && !project.repo && parts.host === 'github'}
+				<!-- only until the first lookup lands -->
+				<Skeleton class="my-1 h-3.5 w-2/3" />
+			{/if}
 		</div>
+
+		{#if project}
+			<ProjectMenu {project} {skills} {actions} onRemoved={() => goto('/projects')} />
+		{/if}
 	</header>
 
 	{#if project}
@@ -72,8 +86,8 @@
 			<div class="flex flex-col items-center justify-center gap-2 px-8 py-16 text-center">
 				<p class="text-sm text-card-foreground">No skills in this project yet</p>
 				<p class="text-sm text-muted-foreground">
-					Run <code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> in the repo, or
-					pick this project from a skill's menu.
+					Add some from the menu above, or run
+					<code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> in the repo.
 				</p>
 			</div>
 		{:else}

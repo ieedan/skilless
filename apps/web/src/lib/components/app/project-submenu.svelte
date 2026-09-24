@@ -96,7 +96,7 @@
 			class="h-9 w-full shrink-0 border-b border-border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
 		/>
 
-		<div class="max-h-72 overflow-y-auto p-1">
+		<div class="max-h-72 min-h-0 overflow-y-auto p-1">
 			{#if showGlobal}
 				<DropdownMenuPrimitive.CheckboxItem
 					closeOnSelect={false}

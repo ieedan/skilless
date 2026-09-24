@@ -3,22 +3,17 @@ import { error } from '@sveltejs/kit';
 import { convexLoad } from 'convex-svelte/sveltekit';
 
 export async function load({ locals, params }) {
-	const [skills, projects] = await Promise.all([
+	const [skills, projects, installUrl] = await Promise.all([
 		convexLoad(api.skills.list, {}),
-		convexLoad(api.projects.list, {})
+		convexLoad(api.projects.list, {}),
+		locals.convex.query(api.github.installLink, {}),
+		// see the project list
+		locals.convex.mutation(api.github.refreshStale, {}).catch(() => {})
 	]);
 
 	if (!projects.data?.some((project) => project.key === params.key)) {
 		error(404, 'No project by that name');
 	}
 
-	return {
-		skills,
-		projects,
-		// streamed, see the project list
-		description: locals.convex
-			.action(api.github.describe, { keys: [params.key] })
-			.then((descriptions) => descriptions[params.key] ?? null)
-			.catch(() => null)
-	};
+	return { skills, projects, installUrl };
 }
