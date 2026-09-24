@@ -1,3 +1,4 @@
+import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { convexError, createConvexError } from './errors';
@@ -5,6 +6,9 @@ import { parse } from 'yaml';
 import { r2 } from './r2';
 
 export type SkillFile = { path: string; contents: string };
+
+/** Project keys GitHub can describe (see `github.refresh`). */
+export const isGithubKey = (key: string) => key.startsWith('github.com/');
 
 /** Live (non trashed) skill by name. Names are unique among live skills only. */
 export async function findSkill(
@@ -334,6 +338,30 @@ export async function projectsForSkill(
 	return projects.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/** The project for a key, created on first use the way `skilless add` would. */
+export async function ensureProject(
+	ctx: MutationCtx,
+	userId: string,
+	key: string
+): Promise<Doc<'projects'>> {
+	const existing = await findProject(ctx, userId, key);
+	if (existing) return existing;
+
+	const projectId = await ctx.db.insert('projects', { userId, key });
+
+	// look the new repo up now, so the project list has its description before it is opened
+	if (isGithubKey(key)) {
+		await ctx.scheduler.runAfter(0, internal.github.refresh, {
+			userId,
+			projects: [{ id: projectId, key }]
+		});
+	}
+
+	const project = await ctx.db.get(projectId);
+	if (!project) throw createConvexError(convexError.ProjectNotFound());
+	return project;
+}
+
 /** Replaces a project's bindings wholesale. Unknown skill names are reported, not silently dropped. */
 export async function setBindings(
 	ctx: MutationCtx,
@@ -355,12 +383,7 @@ export async function setBindings(
 		bound.push(name);
 	}
 
-	let project = await findProject(ctx, userId, key);
-	if (!project) {
-		const projectId = await ctx.db.insert('projects', { userId, key });
-		project = await ctx.db.get(projectId);
-	}
-	if (!project) throw createConvexError(convexError.ProjectNotFound());
+	const project = await ensureProject(ctx, userId, key);
 
 	const existing = await ctx.db
 		.query('bindings')

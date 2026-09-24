@@ -13,7 +13,11 @@
 	async function signIn() {
 		error = null;
 
-		const result = await authClient.signIn.social({ provider: 'github', callbackURL: redirectTo });
+		// via /github/setup, which sends anyone without the app installed to install it first
+		const result = await authClient.signIn.social({
+			provider: 'github',
+			callbackURL: `/github/setup?redirectTo=${encodeURIComponent(redirectTo)}`
+		});
 
 		// on success the browser is already navigating away, so only failure lands here
 		if (result.error) error = 'Could not sign in. Try again.';
@@ -24,11 +28,14 @@
 
 <main class="flex min-h-dvh flex-col items-center justify-center bg-background px-6">
 	<div class="flex w-full max-w-100 flex-col items-center gap-8 p-10">
-		<a href="/" class="flex py-1">
-			<Logo class="h-3.5" />
-		</a>
+		<!-- the logo and its caption read as one unit, closer than the button below -->
+		<div class="flex flex-col items-center gap-4">
+			<a href="/" class="flex">
+				<Logo class="h-5" />
+			</a>
 
-		<p class="text-center text-sm text-muted-foreground">Sign in to continue</p>
+			<p class="text-center text-sm text-muted-foreground">Sign in to continue</p>
+		</div>
 
 		<LoadingButton onClickPromise={signIn} class="w-full">
 			<GithubLogo />

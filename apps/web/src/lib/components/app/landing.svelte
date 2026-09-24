@@ -8,7 +8,8 @@
 	let { signedIn = false }: { signedIn?: boolean } = $props();
 </script>
 
-<div class="flex min-h-dvh flex-col bg-background">
+<!-- the same --card surface as the app shell; see `data-surface` in layout.css -->
+<div data-surface="card" class="flex min-h-dvh flex-col bg-card">
 	<header class="flex items-center justify-between px-6 py-7 md:px-30">
 		<a href="/" class="flex py-1">
 			<Logo class="h-4" />

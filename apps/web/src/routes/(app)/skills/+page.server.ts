@@ -45,6 +45,18 @@ export const actions = {
 
 	setBinding: async ({ locals, request }) => {
 		const data = await request.formData();
+
+		// a GitHub repo that is not a project yet, see the project list
+		const key = data.get('projectKey');
+		if (key) {
+			await locals.convex.mutation(api.projects.setBindingByKey, {
+				key: String(key),
+				skillId: String(data.get('skillId')) as never,
+				bound: data.get('bound') === 'true'
+			});
+			return;
+		}
+
 		const args = {
 			projectId: String(data.get('projectId')) as never,
 			skillId: String(data.get('skillId')) as never
