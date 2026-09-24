@@ -15,7 +15,7 @@
 	const SKILL_ROW = 40;
 	const PROJECT_ROW = 80;
 
-	// popular skills from skills.sh, in well-known open source repos
+	// popular skills from skills.sh, in open source projects from around this one
 	const skills = [
 		'frontend-design',
 		'web-design-guidelines',
@@ -27,19 +27,19 @@
 
 	const projects = [
 		{
-			owner: 'sveltejs',
-			name: 'kit',
+			owner: 'huntabyte',
+			name: 'shadcn-svelte',
+			skills: ['frontend-design', 'web-design-guidelines', 'agent-browser']
+		},
+		{
+			owner: 'jsrepojs',
+			name: 'jsrepo',
+			skills: ['diagnosing-bugs', 'grill-me', 'find-skills']
+		},
+		{
+			owner: 'ieedan',
+			name: 'shadcn-svelte-extras',
 			skills: ['frontend-design', 'agent-browser', 'diagnosing-bugs']
-		},
-		{
-			owner: 'vercel',
-			name: 'next.js',
-			skills: ['web-design-guidelines', 'agent-browser', 'grill-me']
-		},
-		{
-			owner: 'shadcn-ui',
-			name: 'ui',
-			skills: ['frontend-design', 'web-design-guidelines', 'find-skills']
 		}
 	];
 
@@ -57,7 +57,7 @@
 	type Link = (typeof links)[number];
 	type Selection = { kind: 'skill' | 'project'; name: string };
 
-	let selected = $state<Selection>({ kind: 'project', name: 'kit' });
+	let selected = $state<Selection>({ kind: 'project', name: 'shadcn-svelte' });
 
 	// drawn at the real width, so strokes keep their weight and dashes their length
 	let width = $state(100);
@@ -202,8 +202,9 @@
 										{on ? 'border-foreground bg-foreground delay-300' : 'border-muted-foreground/50 bg-card'}"
 								></span>
 								<span class="flex min-w-0 flex-col">
-									<span class="truncate text-sm font-medium md:text-base"
-										><span class="text-muted-foreground">{project.owner}/</span>{project.name}</span
+									<span class="text-sm font-medium break-words sm:truncate md:text-base"
+										><span class="hidden text-muted-foreground sm:inline">{project.owner}/</span
+										>{project.name}</span
 									>
 									<span class="truncate text-xs text-muted-foreground">
 										{project.skills.length} skills linked
