@@ -1,8 +1,8 @@
 <script lang="ts">
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import { APP_NAME } from '$lib/constants';
+	import CopyPage from '$lib/components/docs/copy-page.svelte';
 	import { href, markdownHref } from '$lib/docs';
 
 	let { data } = $props();
@@ -19,17 +19,14 @@
 <div class="flex gap-12 py-10 md:py-14">
 	<article class="min-w-0 flex-1 xl:max-w-3xl">
 		<header class="mb-10 flex flex-col gap-3 border-b border-border pb-8">
-			<h1 class="text-4xl font-semibold tracking-tight text-balance">{data.metadata.title}</h1>
+			<!-- title on the left, page actions pinned to its top right -->
+			<div class="flex items-start justify-between gap-4">
+				<h1 class="text-4xl font-semibold tracking-tight text-balance">{data.metadata.title}</h1>
+				<CopyPage markdown={data.markdown} markdownHref={markdownHref(data.slug)} />
+			</div>
 			<p class="text-lg leading-relaxed text-pretty text-muted-foreground">
 				{data.metadata.description}
 			</p>
-			<a
-				href={markdownHref(data.slug)}
-				data-sveltekit-reload
-				class="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-			>
-				<FileTextIcon class="size-3.5" />View as Markdown
-			</a>
 		</header>
 
 		<data.component />

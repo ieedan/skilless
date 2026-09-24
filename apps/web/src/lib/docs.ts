@@ -107,6 +107,8 @@ export async function getDoc(slug: string) {
 		component: mod.default,
 		metadata: mod.metadata,
 		headings: headings(raw),
+		// sent with the page so "Copy page" can write it without a fetch in between
+		markdown: toMarkdown(raw, mod.metadata),
 		previous: index > 0 ? order[index - 1] : undefined,
 		next: index >= 0 ? order[index + 1] : undefined
 	};
@@ -116,15 +118,18 @@ export async function getDoc(slug: string) {
  * A page as markdown, for agents and anyone who'd rather read the source. The
  * frontmatter becomes a title and summary, so the file reads on its own.
  */
-export async function getMarkdown(slug: string): Promise<string | undefined> {
-	const source = sources[file(slug)];
-	if (!source) return undefined;
-
-	const raw = await source();
-	const { metadata } = await modules[file(slug)]();
+function toMarkdown(raw: string, metadata: DocMetadata): string {
 	const body = raw.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-
 	return `# ${metadata.title}\n\n${metadata.description}\n\n${body}\n`;
+}
+
+export async function getMarkdown(slug: string): Promise<string | undefined> {
+	const load = modules[file(slug)];
+	const source = sources[file(slug)];
+	if (!load || !source) return undefined;
+
+	const [mod, raw] = await Promise.all([load(), source()]);
+	return toMarkdown(raw, mod.metadata);
 }
 
 export function markdownResponse(markdown: string | undefined): Response {
