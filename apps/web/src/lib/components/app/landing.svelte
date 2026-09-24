@@ -117,7 +117,8 @@
 					All your skills, none of the clutter
 				</h1>
 				<p class="max-w-xl text-lg leading-relaxed text-muted-foreground">
-					{APP_NAME} invisibly links your skills to your projects so that you can use them without ever needing to commit them.
+					{APP_NAME} invisibly links your skills to your projects so that you can use them without ever
+					needing to commit them.
 				</p>
 			</div>
 
