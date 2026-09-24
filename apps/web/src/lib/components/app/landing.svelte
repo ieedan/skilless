@@ -113,11 +113,10 @@
 		<section class="flex max-w-2xl flex-col gap-8 pt-16 pb-14 md:pt-28">
 			<div class="flex flex-col gap-5">
 				<h1 class="text-5xl leading-[1.05] font-semibold tracking-tight text-balance md:text-6xl">
-					One copy of every skill. Linked only where you need it.
+					All your skills, none of the clutter
 				</h1>
 				<p class="max-w-xl text-lg leading-relaxed text-muted-foreground">
-					{APP_NAME} keeps your skills in a single library and links each one into the projects that use
-					it. Edit a skill once and every project sees the change.
+					{APP_NAME} invisibly links your skills to your projects so that you can use them without ever needing to commit them.
 				</p>
 			</div>
 
