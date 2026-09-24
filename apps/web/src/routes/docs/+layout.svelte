@@ -6,7 +6,10 @@
 	import GithubLogo from '$lib/components/app/github-logo.svelte';
 	import Logo from '$lib/components/app/logo.svelte';
 
-	let { children } = $props();
+	let { data, children } = $props();
+
+	// `/` sends signed-in visitors to the app, so the marketing page is at /home for them
+	const home = $derived(data.signedIn ? '/home' : '/');
 
 	let menuOpen = $state(false);
 </script>
@@ -36,7 +39,7 @@
 				</Sheet.Content>
 			</Sheet.Root>
 
-			<a href="/" class="flex py-1" aria-label="skilless home">
+			<a href={home} class="flex py-1" aria-label="skilless home">
 				<Logo class="h-3.5" />
 			</a>
 			<a href="/docs" class="text-sm font-medium">Docs</a>
@@ -50,7 +53,11 @@
 				>
 					<GithubLogo />
 				</Button>
-				<Button href="/login" variant="outline" size="sm">Log in</Button>
+				{#if data.signedIn}
+					<Button href="/skills" variant="outline" size="sm">Dashboard</Button>
+				{:else}
+					<Button href="/login" variant="outline" size="sm">Log in</Button>
+				{/if}
 			</nav>
 		</div>
 	</header>

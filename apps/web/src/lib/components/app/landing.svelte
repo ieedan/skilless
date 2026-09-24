@@ -94,7 +94,8 @@
 
 <div class="flex min-h-dvh flex-col bg-background">
 	<header class="flex items-center justify-between px-6 py-7 md:px-30">
-		<a href="/" class="flex py-1">
+		<!-- `/` sends signed-in visitors to the app; the marketing page is /home for them -->
+		<a href={signedIn ? '/home' : '/'} class="flex py-1">
 			<Logo class="h-4" />
 		</a>
 

@@ -210,6 +210,10 @@
 			@apply mt-4;
 		}
 
+		& > :first-child {
+			@apply mt-0;
+		}
+
 		& p,
 		& li {
 			@apply text-pretty;
@@ -280,10 +284,6 @@
 		& pre [data-line] {
 			@apply px-4;
 		}
-	}
-
-	.docs-prose [data-rehype-pretty-code-figure] {
-		@apply m-0;
 	}
 
 	.docs-prose [data-rehype-pretty-code-figure] code span {
