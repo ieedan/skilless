@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Drawer from '$lib/components/ui/drawer';
 	import { Button } from '$lib/components/ui/button';
 	import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import { projectParts } from '$lib/project';
@@ -24,9 +24,13 @@
 		onBind?: () => void;
 	} = $props();
 
+	let open = $state(false);
+
 	const path = $derived(projectParts(project.key).path);
 
 	function uninstall() {
+		// close first so the drawer is out of the way of the dialog
+		open = false;
 		confirmDelete({
 			title: `Uninstall ${path}?`,
 			description: 'Every skill is removed from this project. The skills stay in your library.',
@@ -44,16 +48,21 @@
 	}
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger>
+<Drawer.Root bind:open>
+	<Drawer.Trigger>
 		{#snippet child({ props })}
 			<Button {...props} variant="ghost" size="icon-sm" aria-label="Actions for {path}">
 				<RiMoreFill class="text-muted-foreground" />
 			</Button>
 		{/snippet}
-	</DropdownMenu.Trigger>
+	</Drawer.Trigger>
 
-	<DropdownMenu.Content align="end">
+	<Drawer.Content>
+		<Drawer.Header>
+			<Drawer.Title class="truncate">{path}</Drawer.Title>
+			<Drawer.Description class="sr-only">Actions for this project</Drawer.Description>
+		</Drawer.Header>
+
 		<SkillSubmenu
 			{skills}
 			isGlobal={(skill) => actions.isGlobal(skill)}
@@ -66,12 +75,12 @@
 
 		<!-- nothing to uninstall until a skill makes it a project -->
 		{#if !project.unsaved}
-			<DropdownMenu.Separator />
+			<Drawer.Separator />
 
-			<DropdownMenu.Item variant="destructive" onSelect={uninstall}>
+			<Drawer.Item variant="destructive" onclick={uninstall}>
 				<RiDeleteBinLine />
 				Uninstall
-			</DropdownMenu.Item>
+			</Drawer.Item>
 		{/if}
-	</DropdownMenu.Content>
-</DropdownMenu.Root>
+	</Drawer.Content>
+</Drawer.Root>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Drawer from '$lib/components/ui/drawer';
 	import { Button } from '$lib/components/ui/button';
 	import ProjectSubmenu from './project-submenu.svelte';
 	import { downloadZip } from '$lib/download';
@@ -26,50 +26,59 @@
 		onRemoved?: () => Promise<unknown>;
 	} = $props();
 
+	let open = $state(false);
+
 	const base = $derived(`/skills/${encodeURIComponent(skill.name)}`);
 	const main = $derived(skill.soleFile ?? 'SKILL.md');
+
+	/** Close first so the drawer is out of the way of whatever the action opens. */
+	function run(action: () => unknown) {
+		return () => {
+			open = false;
+			action();
+		};
+	}
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger>
+<Drawer.Root bind:open>
+	<Drawer.Trigger>
 		{#snippet child({ props })}
 			<Button {...props} variant="ghost" size="icon-sm" aria-label="Actions for {skill.name}">
 				<RiMoreFill class="text-muted-foreground" />
 			</Button>
 		{/snippet}
-	</DropdownMenu.Trigger>
+	</Drawer.Trigger>
 
-	<DropdownMenu.Content align="end">
-		<DropdownMenu.Item>
-			{#snippet child({ props })}
-				<a {...props} href="{base}/{main}">
-					<RiPencilLine />
-					Edit {main}
-				</a>
-			{/snippet}
-		</DropdownMenu.Item>
+	<Drawer.Content>
+		<Drawer.Header>
+			<Drawer.Title class="font-mono">{skill.name}</Drawer.Title>
+			<Drawer.Description class="sr-only">Actions for this skill</Drawer.Description>
+		</Drawer.Header>
+
+		<Drawer.Item href="{base}/{main}" onclick={() => (open = false)}>
+			<RiPencilLine />
+			Edit {main}
+		</Drawer.Item>
 		{#if browse}
-			<DropdownMenu.Item>
-				{#snippet child({ props })}
-					<a {...props} href={base}>
-						<RiFolderOpenLine />
-						Browse files
-					</a>
-				{/snippet}
-			</DropdownMenu.Item>
+			<Drawer.Item href={base} onclick={() => (open = false)}>
+				<RiFolderOpenLine />
+				Browse files
+			</Drawer.Item>
 		{/if}
-		<DropdownMenu.Item onSelect={() => actions.copyInstall(skill)}>
+		<Drawer.Item onclick={run(() => actions.copyInstall(skill))}>
 			<RiFileCopyLine />
 			Copy install command
-		</DropdownMenu.Item>
-		<DropdownMenu.Item
-			onSelect={() => downloadZip(`/skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)}
+		</Drawer.Item>
+		<Drawer.Item
+			onclick={run(() =>
+				downloadZip(`/skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)
+			)}
 		>
 			<RiDownload2Line />
 			Download
-		</DropdownMenu.Item>
+		</Drawer.Item>
 
-		<DropdownMenu.Separator />
+		<Drawer.Separator />
 
 		<ProjectSubmenu
 			{projects}
@@ -79,11 +88,11 @@
 			onToggle={(project, bound) => actions.setBinding(skill, project, bound)}
 		/>
 
-		<DropdownMenu.Separator />
+		<Drawer.Separator />
 
-		<DropdownMenu.Item variant="destructive" onSelect={() => actions.remove(skill, onRemoved)}>
+		<Drawer.Item variant="destructive" onclick={run(() => actions.remove(skill, onRemoved))}>
 			<RiDeleteBinLine />
 			Delete
-		</DropdownMenu.Item>
-	</DropdownMenu.Content>
-</DropdownMenu.Root>
+		</Drawer.Item>
+	</Drawer.Content>
+</Drawer.Root>

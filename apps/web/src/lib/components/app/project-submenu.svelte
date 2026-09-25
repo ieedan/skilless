@@ -1,10 +1,11 @@
 <script lang="ts" generics="Project extends { _id: string; key: string }">
-	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Drawer from '$lib/components/ui/drawer';
 	import { projectParts } from '$lib/project';
-	import RiCheckLine from 'remixicon-svelte/icons/check-line';
+	import RiArrowRightSLine from 'remixicon-svelte/icons/arrow-right-s-line';
 	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
+	import CheckRow from './check-row.svelte';
+	import FilterInput from './filter-input.svelte';
 	import ProjectIcon from './project-icon.svelte';
 
 	let {
@@ -24,7 +25,6 @@
 
 	let query = $state('');
 	let input = $state<HTMLInputElement | null>(null);
-	let content = $state<HTMLElement | null>(null);
 
 	const needle = $derived(query.trim().toLowerCase());
 	const showGlobal = $derived(!needle || 'global'.includes(needle));
@@ -34,113 +34,66 @@
 		return needle ? list.filter(({ project }) => project.key.includes(needle)) : list;
 	});
 
-	/**
-	 * The menu reads every keystroke for typeahead and uses the arrow keys to
-	 * move between items, both of which would fight a text field. Keep keys in
-	 * the field, except Escape to close and ArrowDown to hop into the list.
-	 */
-	function onkeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') return;
-
-		event.stopPropagation();
-
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			content
-				?.querySelector<HTMLElement>('[role="menuitemcheckbox"]:not([data-disabled])')
-				?.focus();
-		}
-	}
-
-	const itemClass =
-		'group/item flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none';
+	const summary = $derived(
+		global ? 'Global' : `${projects.filter((project) => isBound(project)).length}`
+	);
 </script>
 
-{#snippet box(checked: boolean, muted = false)}
-	<span
-		class="flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {checked
-			? muted
-				? 'border-input bg-muted text-muted-foreground'
-				: 'border-primary bg-primary text-primary-foreground'
-			: 'border-input opacity-0 group-focus/item:opacity-100'}"
-	>
-		{#if checked}
-			<RiCheckLine class="size-3" aria-hidden="true" />
-		{/if}
-	</span>
-{/snippet}
-
-<DropdownMenu.Sub onOpenChange={(open) => !open && (query = '')}>
-	<DropdownMenu.SubTrigger>
+<Drawer.Root onOpenChange={(open) => !open && (query = '')}>
+	<Drawer.Trigger class={Drawer.drawerItemClass}>
 		<RiGitRepositoryLine />
-		Projects
-	</DropdownMenu.SubTrigger>
-	<DropdownMenu.SubContent
-		bind:ref={content}
-		side="left"
-		sideOffset={4}
-		class="flex w-72 flex-col p-0"
+		<span class="flex-1">Projects</span>
+		<span class="text-xs text-muted-foreground tabular-nums">{summary}</span>
+		<RiArrowRightSLine />
+	</Drawer.Trigger>
+
+	<Drawer.Content
 		onOpenAutoFocus={(event) => {
+			// on touch screens this would throw up the keyboard over the list
+			if (!matchMedia('(pointer: fine)').matches) return;
 			event.preventDefault();
 			input?.focus();
 		}}
 	>
-		<input
-			bind:this={input}
-			bind:value={query}
-			{onkeydown}
-			placeholder="Filter…"
-			aria-label="Filter projects"
-			autocomplete="off"
-			spellcheck="false"
-			class="h-9 w-full shrink-0 border-b border-border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
-		/>
+		<Drawer.Header>
+			<Drawer.Title>Projects</Drawer.Title>
+			<Drawer.Description>Where this skill is installed.</Drawer.Description>
+		</Drawer.Header>
 
-		<div class="max-h-72 min-h-0 overflow-y-auto p-1">
+		<FilterInput bind:ref={input} bind:value={query} aria-label="Filter projects" />
+
+		<div class="flex flex-col">
 			{#if showGlobal}
-				<DropdownMenuPrimitive.CheckboxItem
-					closeOnSelect={false}
-					bind:checked={() => global, (value) => onGlobalChange(value)}
-					class={itemClass}
-				>
-					{#snippet children({ checked })}
-						{@render box(checked)}
-						<RiGlobalLine class="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-						<span class="flex min-w-0 flex-col">
-							<span>Global</span>
-							<span class="text-xs text-muted-foreground">Every project, automatically</span>
-						</span>
-					{/snippet}
-				</DropdownMenuPrimitive.CheckboxItem>
+				<CheckRow checked={global} onCheckedChange={onGlobalChange}>
+					<RiGlobalLine class="size-5 text-muted-foreground" aria-hidden="true" />
+					<span class="flex min-w-0 flex-col">
+						<span>Global</span>
+						<span class="text-xs text-muted-foreground">Every project, automatically</span>
+					</span>
+				</CheckRow>
 
 				{#if filtered.length > 0}
-					<DropdownMenu.Separator />
+					<Drawer.Separator />
 				{/if}
 			{/if}
 
 			{#each filtered as { project, parts } (project._id)}
 				<!--
-					Stays open so several projects can be toggled in one go. While the
-					skill is global every project gets it anyway, so the row shows as
-					included and locked; the real bindings come back if global is
-					switched off.
+					While the skill is global every project gets it anyway, so the row
+					shows as included and locked; the real bindings come back if global
+					is switched off.
 				-->
-				<DropdownMenuPrimitive.CheckboxItem
-					closeOnSelect={false}
+				<CheckRow
+					checked={global || isBound(project)}
 					disabled={global}
-					bind:checked={() => global || isBound(project), (bound) => onToggle(project, bound)}
-					class={itemClass}
+					onCheckedChange={(bound) => onToggle(project, bound)}
 				>
-					{#snippet children({ checked })}
-						{@render box(checked, global)}
+					<ProjectIcon {parts} surface="bg-popover" class={global ? 'opacity-60' : ''} />
 
-						<ProjectIcon {parts} surface="bg-popover" class={global ? 'opacity-60' : ''} />
-
-						<span class="truncate {global ? 'text-muted-foreground' : ''}" title={project.key}>
-							{parts.path}
-						</span>
-					{/snippet}
-				</DropdownMenuPrimitive.CheckboxItem>
+					<span class="truncate {global ? 'text-muted-foreground' : ''}" title={project.key}>
+						{parts.path}
+					</span>
+				</CheckRow>
 			{:else}
 				{#if !showGlobal || projects.length === 0}
 					<p class="px-2 py-1.5 text-xs text-muted-foreground">
@@ -153,5 +106,5 @@
 				{/if}
 			{/each}
 		</div>
-	</DropdownMenu.SubContent>
-</DropdownMenu.Sub>
+	</Drawer.Content>
+</Drawer.Root>
