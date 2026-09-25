@@ -1,10 +1,9 @@
 <script lang="ts" generics="Skill extends { _id: string; name: string; description?: string }">
-	import * as Drawer from '$lib/components/ui/drawer';
-	import RiArrowRightSLine from 'remixicon-svelte/icons/arrow-right-s-line';
+	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import RiCheckLine from 'remixicon-svelte/icons/check-line';
 	import RiCodeSSlashLine from 'remixicon-svelte/icons/code-s-slash-line';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
-	import CheckRow from './check-row.svelte';
-	import FilterInput from './filter-input.svelte';
 
 	let {
 		skills,
@@ -21,6 +20,7 @@
 
 	let query = $state('');
 	let input = $state<HTMLInputElement | null>(null);
+	let content = $state<HTMLElement | null>(null);
 
 	const needle = $derived(query.trim().toLowerCase());
 
@@ -36,58 +36,98 @@
 		return [...list.filter((s) => !isGlobal(s)), ...list.filter((s) => isGlobal(s))];
 	});
 
-	const count = $derived(skills.filter((skill) => isGlobal(skill) || isBound(skill)).length);
+	/** See ProjectSubmenu: keep keys in the field, except Escape and ArrowDown. */
+	function onkeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') return;
+
+		event.stopPropagation();
+
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			content
+				?.querySelector<HTMLElement>('[role="menuitemcheckbox"]:not([data-disabled])')
+				?.focus();
+		}
+	}
+
+	const itemClass =
+		'group/item flex cursor-default items-start gap-2.5 rounded-md px-2 py-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none';
 </script>
 
-<Drawer.Root onOpenChange={(open) => !open && (query = '')}>
-	<Drawer.Trigger class={Drawer.drawerItemClass}>
-		<RiCodeSSlashLine />
-		<span class="flex-1">Skills</span>
-		<span class="text-xs text-muted-foreground tabular-nums">{count}</span>
-		<RiArrowRightSLine />
-	</Drawer.Trigger>
+{#snippet box(checked: boolean, muted = false)}
+	<span
+		class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {checked
+			? muted
+				? 'border-input bg-muted text-muted-foreground'
+				: 'border-primary bg-primary text-primary-foreground'
+			: 'border-input opacity-0 group-focus/item:opacity-100'}"
+	>
+		{#if checked}
+			<RiCheckLine class="size-3" aria-hidden="true" />
+		{/if}
+	</span>
+{/snippet}
 
-	<Drawer.Content
+<DropdownMenu.Sub onOpenChange={(open) => !open && (query = '')}>
+	<DropdownMenu.SubTrigger>
+		<RiCodeSSlashLine />
+		Skills
+	</DropdownMenu.SubTrigger>
+	<DropdownMenu.SubContent
+		bind:ref={content}
+		side="left"
+		sideOffset={4}
+		class="flex w-80 flex-col p-0"
 		onOpenAutoFocus={(event) => {
-			// on touch screens this would throw up the keyboard over the list
-			if (!matchMedia('(pointer: fine)').matches) return;
 			event.preventDefault();
 			input?.focus();
 		}}
 	>
-		<Drawer.Header>
-			<Drawer.Title>Skills</Drawer.Title>
-			<Drawer.Description>What this project gets.</Drawer.Description>
-		</Drawer.Header>
+		<input
+			bind:this={input}
+			bind:value={query}
+			{onkeydown}
+			placeholder="Filter…"
+			aria-label="Filter skills"
+			autocomplete="off"
+			spellcheck="false"
+			class="h-9 w-full shrink-0 border-b border-border bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
+		/>
 
-		<FilterInput bind:ref={input} bind:value={query} aria-label="Filter skills" />
-
-		<div class="flex flex-col">
+		<div class="max-h-80 min-h-0 overflow-y-auto p-1">
 			{#each filtered as skill (skill._id)}
 				{@const global = isGlobal(skill)}
-				<CheckRow
-					checked={global || isBound(skill)}
+				<!-- stays open so several skills can be toggled in one go -->
+				<DropdownMenuPrimitive.CheckboxItem
+					closeOnSelect={false}
 					disabled={global}
-					onCheckedChange={(bound) => onToggle(skill, bound)}
-					align="start"
+					bind:checked={() => global || isBound(skill), (bound) => onToggle(skill, bound)}
+					class={itemClass}
 				>
-					<span class="flex min-w-0 flex-col gap-0.5 {global ? 'opacity-60' : ''}">
-						<span class="flex min-w-0 items-center gap-1.5">
-							<span class="truncate font-mono text-[13px] font-semibold">{skill.name}</span>
-							{#if global}
-								<RiGlobalLine class="size-3.5 text-muted-foreground" aria-label="Global" />
-							{/if}
+					{#snippet children({ checked })}
+						{@render box(checked, global)}
+
+						<span class="flex min-w-0 flex-col gap-0.5 {global ? 'opacity-60' : ''}">
+							<span class="flex min-w-0 items-center gap-1.5">
+								<span class="truncate font-mono text-[13px] font-semibold">{skill.name}</span>
+								{#if global}
+									<RiGlobalLine
+										class="size-3.5 shrink-0 text-muted-foreground"
+										aria-label="Global"
+									/>
+								{/if}
+							</span>
+							<span class="line-clamp-1 text-xs text-muted-foreground">
+								{skill.description || 'No description'}
+							</span>
 						</span>
-						<span class="line-clamp-1 text-xs text-muted-foreground">
-							{skill.description || 'No description'}
-						</span>
-					</span>
-				</CheckRow>
+					{/snippet}
+				</DropdownMenuPrimitive.CheckboxItem>
 			{:else}
 				<p class="px-2 py-1.5 text-xs text-muted-foreground">
 					{skills.length === 0 ? 'No skills yet.' : 'No skills match.'}
 				</p>
 			{/each}
 		</div>
-	</Drawer.Content>
-</Drawer.Root>
+	</DropdownMenu.SubContent>
+</DropdownMenu.Sub>
