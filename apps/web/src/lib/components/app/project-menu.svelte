@@ -1,14 +1,19 @@
+<script lang="ts" module>
+	import { IsMobile } from '$lib/hooks/is-mobile.svelte';
+
+	// one listener shared by every row's menu
+	const mobile = new IsMobile();
+</script>
+
 <script lang="ts">
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import { Button } from '$lib/components/ui/button';
 	import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import { projectParts } from '$lib/project';
 	import type { MenuProject, MenuSkill, SkillActions } from '$lib/skill-actions.svelte';
 	import { submitAction } from '$lib/submit';
-	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
-	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
-	import SkillSubmenu from './skill-submenu.svelte';
+	import ProjectMenuDrawer from './project-menu-drawer.svelte';
+	import ProjectMenuDropdown from './project-menu-dropdown.svelte';
 
+	/** A dropdown on desktop, a stack of drawers on phones. */
 	let {
 		project,
 		skills,
@@ -24,9 +29,8 @@
 		onBind?: () => void;
 	} = $props();
 
-	const path = $derived(projectParts(project.key).path);
-
 	function uninstall() {
+		const { path } = projectParts(project.key);
 		confirmDelete({
 			title: `Uninstall ${path}?`,
 			description: 'Every skill is removed from this project. The skills stay in your library.',
@@ -44,34 +48,8 @@
 	}
 </script>
 
-<DropdownMenu.Root>
-	<DropdownMenu.Trigger>
-		{#snippet child({ props })}
-			<Button {...props} variant="ghost" size="icon-sm" aria-label="Actions for {path}">
-				<RiMoreFill class="text-muted-foreground" />
-			</Button>
-		{/snippet}
-	</DropdownMenu.Trigger>
-
-	<DropdownMenu.Content align="end">
-		<SkillSubmenu
-			{skills}
-			isGlobal={(skill) => actions.isGlobal(skill)}
-			isBound={(skill) => actions.isBound(skill, project)}
-			onToggle={(skill, bound) => {
-				onBind?.();
-				actions.setBinding(skill, project, bound);
-			}}
-		/>
-
-		<!-- nothing to uninstall until a skill makes it a project -->
-		{#if !project.unsaved}
-			<DropdownMenu.Separator />
-
-			<DropdownMenu.Item variant="destructive" onSelect={uninstall}>
-				<RiDeleteBinLine />
-				Uninstall
-			</DropdownMenu.Item>
-		{/if}
-	</DropdownMenu.Content>
-</DropdownMenu.Root>
+{#if mobile.current}
+	<ProjectMenuDrawer {project} {skills} {actions} {onBind} onUninstall={uninstall} />
+{:else}
+	<ProjectMenuDropdown {project} {skills} {actions} {onBind} onUninstall={uninstall} />
+{/if}
