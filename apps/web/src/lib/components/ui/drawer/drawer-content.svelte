@@ -26,7 +26,7 @@
 		'[--scale:clamp(0,calc(var(--scale-base)+(var(--stack-step)*var(--stack-progress))),1)]',
 		'[--shrink:calc(1-var(--scale))]',
 		'[--height:max(0px,calc(var(--drawer-frontmost-height,var(--drawer-height))-var(--bleed)))]',
-		'group/drawer relative -mb-(--bleed) flex max-h-[calc(85dvh+var(--bleed))] w-full max-w-lg flex-col [height:var(--drawer-height,auto)] overflow-y-auto overscroll-contain rounded-t-xl border border-b-0 bg-popover px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px)+var(--bleed))] text-popover-foreground shadow-lg outline-none touch-auto',
+		'group/drawer relative -mb-(--bleed) flex max-h-[calc(85dvh+var(--bleed))] w-full flex-col [height:var(--drawer-height,auto)] overflow-y-auto overscroll-contain rounded-t-xl border-t bg-popover px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px)+var(--bleed))] text-popover-foreground shadow-lg outline-none touch-auto',
 		'[transform-origin:50%_calc(100%-var(--bleed))] [transform:translateY(calc(var(--drawer-swipe-movement-y)-var(--stack-peek-offset)-(var(--shrink)*var(--height))))_scale(var(--scale))]',
 		'[transition:transform_450ms_cubic-bezier(0.32,0.72,0,1),height_450ms_cubic-bezier(0.32,0.72,0,1),box-shadow_450ms_cubic-bezier(0.32,0.72,0,1)]',
 		'data-starting-style:[transform:translateY(calc(100%-var(--bleed)+2px))] data-ending-style:[transform:translateY(calc(100%-var(--bleed)+2px))]',
