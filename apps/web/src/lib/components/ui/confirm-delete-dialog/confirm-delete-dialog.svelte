@@ -76,12 +76,15 @@
 </script>
 
 <script lang="ts">
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Modal from '$lib/components/ui/modal';
+	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import { LoadingButton } from '$lib/components/ui/loading-button';
 </script>
 
-<AlertDialog.Root bind:open={dialogState.open}>
-	<AlertDialog.Content>
+<!-- a dialog on desktop and a drawer on phones, like every other dialog -->
+<Modal.Root bind:open={dialogState.open}>
+	<Modal.Content showCloseButton={false} class="sm:max-w-md">
 		<form
 			method="POST"
 			onsubmit={(e) => {
@@ -90,14 +93,14 @@
 			}}
 			class="flex flex-col gap-4"
 		>
-			<AlertDialog.Header>
-				<AlertDialog.Title>
+			<Modal.Header>
+				<Modal.Title>
 					{dialogState.options?.title}
-				</AlertDialog.Title>
-				<AlertDialog.Description>
+				</Modal.Title>
+				<Modal.Description>
 					{dialogState.options?.description}
-				</AlertDialog.Description>
-			</AlertDialog.Header>
+				</Modal.Description>
+			</Modal.Header>
 			{#if dialogState.options?.input}
 				<Input
 					bind:value={dialogState.inputText}
@@ -111,11 +114,11 @@
 					}}
 				/>
 			{/if}
-			<AlertDialog.Footer>
-				<AlertDialog.Cancel type="button" onclick={dialogState.cancel}>
+			<Modal.Footer>
+				<Button type="button" variant="outline" onclick={dialogState.cancel}>
 					{dialogState.options?.cancel?.text ?? 'Cancel'}
-				</AlertDialog.Cancel>
-				<AlertDialog.Action
+				</Button>
+				<LoadingButton
 					type="submit"
 					variant="destructive"
 					loading={dialogState.loading}
@@ -123,8 +126,8 @@
 						dialogState.inputText !== dialogState.options.input.confirmationText}
 				>
 					{dialogState.options?.confirm?.text ?? 'Delete'}
-				</AlertDialog.Action>
-			</AlertDialog.Footer>
+				</LoadingButton>
+			</Modal.Footer>
 		</form>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+	</Modal.Content>
+</Modal.Root>

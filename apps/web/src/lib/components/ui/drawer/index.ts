@@ -7,6 +7,7 @@ import Title from './drawer-title.svelte';
 import Description from './drawer-description.svelte';
 import Item, { drawerItemClass } from './drawer-item.svelte';
 import Separator from './drawer-separator.svelte';
+import Footer from './drawer-footer.svelte';
 
 export {
 	Root,
@@ -18,6 +19,7 @@ export {
 	Description,
 	Item,
 	Separator,
+	Footer,
 	drawerItemClass,
 	//
 	Root as Drawer,
@@ -28,5 +30,6 @@ export {
 	Title as DrawerTitle,
 	Description as DrawerDescription,
 	Item as DrawerItem,
-	Separator as DrawerSeparator
+	Separator as DrawerSeparator,
+	Footer as DrawerFooter
 };

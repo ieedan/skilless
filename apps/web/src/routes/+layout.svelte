@@ -12,9 +12,12 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { APP_DESCRIPTION, APP_NAME } from '$lib/constants';
 
-	let { children } = $props();
+	let { children, data } = $props();
 
-	createSvelteAuthClient({ authClient: authClient as unknown as AuthClient });
+	createSvelteAuthClient({
+		authClient: authClient as unknown as AuthClient,
+		getServerState: () => data.authState
+	});
 	setupConvex(env.PUBLIC_CONVEX_URL);
 
 	/**

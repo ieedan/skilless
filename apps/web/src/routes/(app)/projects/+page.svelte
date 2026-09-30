@@ -6,7 +6,6 @@
 	import { SkillActions, type MenuProject } from '$lib/skill-actions.svelte';
 	import ProjectMenu from '$lib/components/app/project-menu.svelte';
 	import ProjectIcon from '$lib/components/app/project-icon.svelte';
-	import ReadingColumn from '$lib/components/app/reading-column.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import RiSearchLine from 'remixicon-svelte/icons/search-line';
@@ -123,9 +122,9 @@
 					</span>
 				</span>
 
-				<!-- clamped to two lines, like skill descriptions -->
+				<!-- one line at a reading width, like skill descriptions -->
 				{#if description}
-					<span class="line-clamp-2 text-[13px] text-muted-foreground">
+					<span class="max-w-2xl truncate text-[13px] text-muted-foreground">
 						{@render marked(around(description, queryTerms))}
 					</span>
 				{:else if pending}
@@ -159,87 +158,86 @@
 
 <svelte:head><title>Projects · {APP_NAME}</title></svelte:head>
 
-<ReadingColumn>
-	<div class="relative mt-4 mb-2">
-		<RiSearchLine
-			class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-			aria-hidden="true"
-		/>
-		<Input
-			type="search"
-			placeholder="Search projects"
-			aria-label="Search projects"
-			autocomplete="off"
-			spellcheck="false"
-			class="pl-8"
-			bind:value={query}
-		/>
-	</div>
+<div class="relative mt-4 mb-2">
+	<RiSearchLine
+		class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+		aria-hidden="true"
+	/>
+	<Input
+		type="search"
+		placeholder="Search projects"
+		aria-label="Search projects"
+		autocomplete="off"
+		spellcheck="false"
+		class="pl-8"
+		bind:value={query}
+	/>
+</div>
 
-	{#if unreachable.length > 0}
-		<p class="mb-2 rounded-md border border-border px-3 py-2.5 text-[13px] text-muted-foreground">
-			{unreachable.length === 1 ? 'A private repo is' : `${unreachable.length} private repos are`} not
-			shared with {APP_NAME}.
-			<a
-				href="{data.installUrl}?state={encodeURIComponent('/projects')}"
-				class="font-medium text-foreground underline underline-offset-2"
-			>
-				Install the GitHub app
-			</a>
-			to pick which repos it can read.
-		</p>
+{#if unreachable.length > 0}
+	<p class="mb-2 rounded-md border border-border px-3 py-2.5 text-[13px] text-muted-foreground">
+		{unreachable.length === 1 ? 'A private repo is' : `${unreachable.length} private repos are`} not shared
+		with {APP_NAME}.
+		<a
+			href="{data.installUrl}?state={encodeURIComponent('/projects')}"
+			class="font-medium text-foreground underline underline-offset-2"
+		>
+			Install the GitHub app
+		</a>
+		to pick which repos it can read.
+	</p>
+{/if}
+
+<!-- nothing above the first row to clear, so it sits closer to the search -->
+<ul class="divide-y divide-border [&>li:first-child]:pt-2">
+	{#each results as result (result.project.key)}
+		{@render item(result)}
+	{/each}
+</ul>
+
+{#await data.repos}
+	{#if !query.trim()}
+		<section class="mt-8 mb-8" aria-busy="true">
+			<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
+				Other repos
+			</h2>
+			<ul class="divide-y divide-border">
+				{#each [0, 1, 2] as i (i)}
+					<li class="flex items-start gap-3 py-3.5">
+						<Skeleton class="mt-0.5 size-8 shrink-0 rounded-full" />
+						<div class="flex flex-1 flex-col gap-2.5 pt-0.5">
+							<Skeleton class="h-3.5 w-1/3" />
+							<Skeleton class="h-3.5 w-2/3" />
+						</div>
+					</li>
+				{/each}
+			</ul>
+		</section>
 	{/if}
+{:then repos}
+	{@const others = otherRows(repos)}
+	{@const otherResults = search(others, query)}
 
-	<ul class="divide-y divide-border">
-		{#each results as result (result.project.key)}
-			{@render item(result)}
-		{/each}
-	</ul>
-
-	{#await data.repos}
-		{#if !query.trim()}
-			<section class="mt-8 mb-8" aria-busy="true">
-				<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-					Other repos
-				</h2>
-				<ul class="divide-y divide-border">
-					{#each [0, 1, 2] as i (i)}
-						<li class="flex items-start gap-3 py-3.5">
-							<Skeleton class="mt-0.5 size-8 shrink-0 rounded-full" />
-							<div class="flex flex-1 flex-col gap-2.5 pt-0.5">
-								<Skeleton class="h-3.5 w-1/3" />
-								<Skeleton class="h-3.5 w-2/3" />
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-	{:then repos}
-		{@const others = otherRows(repos)}
-		{@const otherResults = search(others, query)}
-
-		{#if projects.length === 0 && others.length === 0}
-			<div class="flex flex-col items-center justify-center gap-2 px-8 py-24 text-center">
-				<p class="text-sm text-card-foreground">No projects yet</p>
-				<p class="text-sm text-muted-foreground">
-					Run <code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> inside a repo
-					to add it here.
-				</p>
-			</div>
-		{:else if results.length === 0 && otherResults.length === 0}
-			{@render noMatch()}
-		{:else if otherResults.length > 0}
-			<section class="mt-8 mb-8">
-				<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-					Other repos
-				</h2>
-				<ul class="divide-y divide-border">
-					{#each otherResults as result (result.project.key)}
-						{@render item(result, true)}
-					{/each}
-				</ul>
-			</section>
-		{/if}
-	{/await}
-</ReadingColumn>
+	{#if projects.length === 0 && others.length === 0}
+		<div class="flex flex-col items-center justify-center gap-2 px-8 py-24 text-center">
+			<p class="text-sm text-card-foreground">No projects yet</p>
+			<p class="text-sm text-muted-foreground">
+				Run <code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> inside a repo to
+				add it here.
+			</p>
+		</div>
+	{:else if results.length === 0 && otherResults.length === 0}
+		{@render noMatch()}
+	{:else if otherResults.length > 0}
+		<section class="mt-8 mb-8">
+			<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
+				Other repos
+			</h2>
+			<ul class="divide-y divide-border">
+				{#each otherResults as result (result.project.key)}
+					{@render item(result, true)}
+				{/each}
+			</ul>
+		</section>
+	{/if}
+{/await}

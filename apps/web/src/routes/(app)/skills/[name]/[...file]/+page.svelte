@@ -5,7 +5,6 @@
 	import CodeEditor from '$lib/components/app/code-editor.svelte';
 	import EntryList from '$lib/components/app/entry-list.svelte';
 	import PageActions from '$lib/components/app/page-actions.svelte';
-	import ReadingColumn from '$lib/components/app/reading-column.svelte';
 	import { CopyButton } from '$lib/components/ui/copy-button';
 	import { LoadingButton } from '$lib/components/ui/loading-button';
 	import RiCheckLine from 'remixicon-svelte/icons/check-line';
@@ -104,13 +103,11 @@
 />
 
 {#if directory}
-	<ReadingColumn>
-		<EntryList
-			entries={directory.entries}
-			contents={directory.contents}
-			base="/skills/{data.skill.name}"
-		/>
-	</ReadingColumn>
+	<EntryList
+		entries={directory.entries}
+		contents={directory.contents}
+		base="/skills/{data.skill.name}"
+	/>
 {:else}
 	<!-- The breadcrumb already names the file, so Save goes up there rather than in a second header. -->
 	<PageActions>
@@ -167,13 +164,13 @@
 
 	<div class="flex min-h-full flex-col">
 		{#if form?.message}
-			<p class="border-b border-border px-4 py-3 text-[13px] text-destructive md:px-7" role="alert">
+			<p class="border-b border-border py-3 text-[13px] text-destructive" role="alert">
 				{form.message}
 			</p>
 		{/if}
 
 		<!-- Cmd/Ctrl-S saves from inside the editor. -->
-		<div class="min-h-0 flex-1 px-4 py-4 md:px-7 md:py-6">
+		<div class="min-h-0 flex-1 py-4 md:py-6">
 			{#if saved !== undefined}
 				<CodeEditor bind:value={draft} path={file?.path ?? ''} onSave={submit} />
 			{:else if failed}

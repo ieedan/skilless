@@ -98,6 +98,25 @@ export default defineSchema({
 		.index('by_hash', ['hash'])
 		.index('by_user', ['userId']),
 
+	/**
+	 * A one-time OAuth authorization code, issued when someone approves an MCP
+	 * client and exchanged moments later for a token in `cliTokens`.
+	 */
+	oauthCodes: defineTable({
+		userId: v.string(),
+		/** sha256 of the code. The plaintext only ever travels in the redirect. */
+		hash: v.string(),
+		clientId: v.string(),
+		/** Shown as the token's name, so the user can find and revoke it in settings. */
+		clientName: v.string(),
+		redirectUri: v.string(),
+		/** PKCE S256 challenge the token request's verifier must hash to. */
+		codeChallenge: v.string(),
+		expiresAt: v.number()
+	})
+		.index('by_hash', ['hash'])
+		.index('by_user', ['userId']),
+
 	/** Per-user display settings. At most one row per user; absent means all defaults. */
 	preferences: defineTable({
 		userId: v.string(),

@@ -15,6 +15,7 @@ import type * as github from "../github.js";
 import type * as http from "../http.js";
 import type * as links from "../links.js";
 import type * as model from "../model.js";
+import type * as oauth from "../oauth.js";
 import type * as preferences from "../preferences.js";
 import type * as projects from "../projects.js";
 import type * as r2 from "../r2.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   links: typeof links;
   model: typeof model;
+  oauth: typeof oauth;
   preferences: typeof preferences;
   projects: typeof projects;
   r2: typeof r2;

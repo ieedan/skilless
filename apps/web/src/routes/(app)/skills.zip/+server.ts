@@ -5,7 +5,7 @@ import { strToU8, zipSync } from 'fflate';
 
 /**
  * Skills as a zip, `<skill>/<path>` inside: every skill for a quick backup, or
- * just one with `?name=`.
+ * just the ones named with `?name=` (repeated for several).
  *
  * Lives at /skills.zip rather than under /skills/ so it can never shadow a
  * skill that happens to share its name.
@@ -13,13 +13,17 @@ import { strToU8, zipSync } from 'fflate';
 export async function GET({ locals, url }) {
 	if (!locals.token) redirect(303, '/login');
 
-	const name = url.searchParams.get('name');
+	const names = url.searchParams.getAll('name');
 
 	let skills;
-	if (name) {
-		const files = await locals.convex.query(api.links.read, { name });
-		if (!files) error(404, 'No skill by that name');
-		skills = [{ name, files }];
+	if (names.length > 0) {
+		skills = await Promise.all(
+			names.map(async (name) => {
+				const files = await locals.convex.query(api.links.read, { name });
+				if (!files) error(404, `No skill named ${name}`);
+				return { name, files };
+			})
+		);
 	} else {
 		skills = await locals.convex.query(api.links.readAll, {});
 	}
@@ -33,7 +37,8 @@ export async function GET({ locals, url }) {
 		})
 	);
 
-	const filename = name ?? `skills-${new Date().toISOString().slice(0, 10)}`;
+	const filename =
+		names.length === 1 ? names[0] : `skills-${new Date().toISOString().slice(0, 10)}`;
 
 	return new Response(zipSync(entries), {
 		headers: {

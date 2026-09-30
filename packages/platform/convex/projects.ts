@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { convexError, createConvexError } from './errors';
 import * as model from './model';
 import { mutation, query, requireUser, secretMutation, secretQuery } from './utils';
 
@@ -122,6 +123,40 @@ export const remove = mutation({
 
 /* -------------------------------------------------------------------- api */
 
+/** Every project, with the names of the skills explicitly bound to it. Globals are not listed. */
+export const listFor = secretQuery({
+	args: { userId: v.string() },
+	handler: async (ctx, args) => {
+		const projects = await ctx.db
+			.query('projects')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.collect();
+
+		const withSkills = await Promise.all(
+			projects.map(async (project) => {
+				const bindings = await ctx.db
+					.query('bindings')
+					.withIndex('by_project', (q) => q.eq('projectId', project._id))
+					.collect();
+
+				const skills: string[] = [];
+				for (const binding of bindings) {
+					const skill = await ctx.db.get(binding.skillId);
+					if (skill && skill.deletedAt === undefined) skills.push(skill.name);
+				}
+
+				return {
+					key: project.key,
+					description: project.repo?.description ?? null,
+					skills: skills.sort()
+				};
+			})
+		);
+
+		return withSkills.sort((a, b) => a.key.localeCompare(b.key));
+	}
+});
+
 /**
  * Resolves a project's bindings to skills, for `skilless install`. Rows only —
  * their files come from `links:readFor`.
@@ -137,5 +172,32 @@ export const setBindingsFor = secretMutation({
 	args: { userId: v.string(), key: v.string(), names: v.array(v.string()) },
 	handler: async (ctx, args) => {
 		return await model.setBindings(ctx, args.userId, args.key, args.names);
+	}
+});
+
+/** Binds or unbinds one skill by name. Binding creates the project, the way `skilless add` would. */
+export const setBindingFor = secretMutation({
+	args: { userId: v.string(), key: v.string(), name: v.string(), bound: v.boolean() },
+	handler: async (ctx, args) => {
+		const skill = await model.findSkill(ctx, args.userId, args.name);
+		if (!skill) throw createConvexError(convexError.SkillNotFound());
+
+		const project = args.bound
+			? await model.ensureProject(ctx, args.userId, args.key)
+			: await model.findProject(ctx, args.userId, args.key);
+		if (!project) return;
+
+		const binding = await ctx.db
+			.query('bindings')
+			.withIndex('by_project_and_skill', (q) =>
+				q.eq('projectId', project._id).eq('skillId', skill._id)
+			)
+			.first();
+
+		if (args.bound && !binding) {
+			await ctx.db.insert('bindings', { projectId: project._id, skillId: skill._id });
+		} else if (!args.bound && binding) {
+			await ctx.db.delete(binding._id);
+		}
 	}
 });

@@ -8,7 +8,6 @@
 	import PageActions from '$lib/components/app/page-actions.svelte';
 	import SkillMenu from '$lib/components/app/skill-menu.svelte';
 	import EntryList from '$lib/components/app/entry-list.svelte';
-	import ReadingColumn from '$lib/components/app/reading-column.svelte';
 	import type { Icon } from '$lib/components/app/file-icon.svelte';
 	import { badgeVariants } from '$lib/components/ui/badge';
 	import GithubLogo from '$lib/components/app/github-logo.svelte';
@@ -95,88 +94,86 @@
 	</Tooltip.Root>
 {/snippet}
 
-<ReadingColumn>
-	<!-- the same inset as the file rows below, so the text lines up with the file names -->
-	<header class="flex flex-col gap-3 border-b border-border px-2 pt-6 pb-5 md:px-6 md:pt-8 md:pb-6">
-		<!-- the name as the author wrote it, which can differ from the one it is stored under -->
-		<h1 class="truncate font-mono text-xl font-semibold text-card-foreground">
-			{skill?.title ?? skill?.name}
-		</h1>
+<!-- the same inset as the file rows below, so the text lines up with the file names -->
+<header class="flex flex-col gap-3 border-b border-border px-2 pt-6 pb-5 md:px-6 md:pt-8 md:pb-6">
+	<!-- the name as the author wrote it, which can differ from the one it is stored under -->
+	<h1 class="truncate font-mono text-xl font-semibold text-card-foreground">
+		{skill?.title ?? skill?.name}
+	</h1>
 
-		{#if skill?.description}
-			<div class="flex flex-col items-start gap-1">
-				<p
-					bind:this={descriptionEl}
-					id="skill-description"
-					class={[
-						'text-sm leading-relaxed whitespace-pre-line text-muted-foreground',
-						!expanded && 'line-clamp-2'
-					]}
+	{#if skill?.description}
+		<div class="flex flex-col items-start gap-1">
+			<p
+				bind:this={descriptionEl}
+				id="skill-description"
+				class={[
+					'text-sm leading-relaxed whitespace-pre-line text-muted-foreground',
+					!expanded && 'line-clamp-2'
+				]}
+			>
+				{skill.description}
+			</p>
+			{#if overflowing || expanded}
+				<button
+					type="button"
+					class="text-[13px] text-foreground underline-offset-4 hover:underline"
+					aria-expanded={expanded}
+					aria-controls="skill-description"
+					onclick={() => (expanded = !expanded)}
 				>
-					{skill.description}
-				</p>
-				{#if overflowing || expanded}
-					<button
-						type="button"
-						class="text-[13px] text-foreground underline-offset-4 hover:underline"
-						aria-expanded={expanded}
-						aria-controls="skill-description"
-						onclick={() => (expanded = !expanded)}
-					>
-						{expanded ? 'Hide' : 'Show more'}
-					</button>
-				{/if}
-			</div>
-		{/if}
+					{expanded ? 'Hide' : 'Show more'}
+				</button>
+			{/if}
+		</div>
+	{/if}
 
-		{#if source || badges.modelInvocable || badges.version || badges.license || tools > 0}
-			<div class="flex flex-wrap items-center gap-1.5">
-				{#if source}
-					<Tooltip.Root>
-						<Tooltip.Trigger>
-							{#snippet child({ props })}
-								<svelte:element
-									this={source.href ? 'a' : 'button'}
-									{...props}
-									href={source.href}
-									target={source.href ? '_blank' : undefined}
-									rel={source.href ? 'noreferrer' : undefined}
-									type={source.href ? undefined : 'button'}
-									class={badgeVariants({ variant: 'outline' })}
-								>
-									{#if source.host === 'github'}
-										<GithubLogo />
-									{:else if source.host === 'gitlab'}
-										<GitlabLogo />
-									{:else}
-										<RiGitRepositoryLine aria-hidden="true" />
-									{/if}
-									{source.path}
-								</svelte:element>
-							{/snippet}
-						</Tooltip.Trigger>
-						<Tooltip.Content>Added from this repository</Tooltip.Content>
-					</Tooltip.Root>
-				{/if}
-				{#if badges.modelInvocable}
-					{@render badge('Model Invocable', 'Agents can use this on their own', RiRobot2Line)}
-				{/if}
-				{#if badges.version}
-					{@render badge(`v${badges.version}`, 'Version')}
-				{/if}
-				{#if badges.license}
-					{@render badge(badges.license, 'License', RiScales3Line)}
-				{/if}
-				{#if tools > 0}
-					{@render badge(
-						tools === 1 ? '1 tool' : `${tools} tools`,
-						`Allowed tools: ${badges.allowedTools.join(', ')}`,
-						RiToolsLine
-					)}
-				{/if}
-			</div>
-		{/if}
-	</header>
+	{#if source || badges.modelInvocable || badges.version || badges.license || tools > 0}
+		<div class="flex flex-wrap items-center gap-1.5">
+			{#if source}
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<svelte:element
+								this={source.href ? 'a' : 'button'}
+								{...props}
+								href={source.href}
+								target={source.href ? '_blank' : undefined}
+								rel={source.href ? 'noreferrer' : undefined}
+								type={source.href ? undefined : 'button'}
+								class={badgeVariants({ variant: 'outline' })}
+							>
+								{#if source.host === 'github'}
+									<GithubLogo />
+								{:else if source.host === 'gitlab'}
+									<GitlabLogo />
+								{:else}
+									<RiGitRepositoryLine aria-hidden="true" />
+								{/if}
+								{source.path}
+							</svelte:element>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Added from this repository</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
+			{#if badges.modelInvocable}
+				{@render badge('Model Invocable', 'Agents can use this on their own', RiRobot2Line)}
+			{/if}
+			{#if badges.version}
+				{@render badge(`v${badges.version}`, 'Version')}
+			{/if}
+			{#if badges.license}
+				{@render badge(badges.license, 'License', RiScales3Line)}
+			{/if}
+			{#if tools > 0}
+				{@render badge(
+					tools === 1 ? '1 tool' : `${tools} tools`,
+					`Allowed tools: ${badges.allowedTools.join(', ')}`,
+					RiToolsLine
+				)}
+			{/if}
+		</div>
+	{/if}
+</header>
 
-	<EntryList {entries} contents={data.contents} base="/skills/{skill?.name}" />
-</ReadingColumn>
+<EntryList {entries} contents={data.contents} base="/skills/{skill?.name}" />

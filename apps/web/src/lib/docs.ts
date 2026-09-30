@@ -42,7 +42,8 @@ export const nav: { title: string; pages: { slug: string; title: string }[] }[] 
 		title: 'Cloud',
 		pages: [
 			{ slug: 'cloud/sync', title: 'Sync' },
-			{ slug: 'cloud/cloud-agents', title: 'Cloud agents' }
+			{ slug: 'cloud/cloud-agents', title: 'Cloud agents' },
+			{ slug: 'cloud/mcp', title: 'MCP server' }
 		]
 	},
 	{

@@ -15,8 +15,8 @@
  *   - dark --border / --input are lifted off shadcn's white-at-10%, which is
  *     invisible against a near-black background
  *
- * The sidebar sits on its own tint (--sidebar) beside a full-bleed content
- * area on --card, so the chrome reads as a separate surface without insets.
+ * The app shell is one --card surface, header and all. The --sidebar tokens
+ * stay for the design file's sake and for any sheet that still uses them.
  */
 
 :root {
