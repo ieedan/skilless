@@ -116,6 +116,11 @@ export default defineSchema({
 		/** sha256 of the token. The plaintext is shown once and never stored. */
 		hash: v.string(),
 		name: v.string(),
+		/**
+		 * `mcp` for a token an MCP client got by OAuth, named after the client.
+		 * Absent for one made by the CLI or on the settings page.
+		 */
+		kind: v.optional(v.literal('mcp')),
 		createdAt: v.number(),
 		lastUsedAt: v.optional(v.number())
 	})

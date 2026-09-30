@@ -80,6 +80,7 @@ export const exchange = secretMutation({
 			userId: code.userId,
 			hash: args.tokenHash,
 			name: code.clientName,
+			kind: 'mcp',
 			createdAt: Date.now()
 		});
 

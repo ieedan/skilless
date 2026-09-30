@@ -1,9 +1,13 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { api } from '@skilless/platform';
+	import { useConvexClient } from '@skilless/platform/client';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/constants';
+	import { UseRepos } from '$lib/hooks/use-repos.svelte';
 	import { projectParts } from '$lib/project';
-	import { SkillActions } from '$lib/skill-actions.svelte';
+	import { SkillActions, type MenuProject } from '$lib/skill-actions.svelte';
 	import PageActions from '$lib/components/app/page-actions.svelte';
 	import ProjectMenu from '$lib/components/app/project-menu.svelte';
 	import ProjectIcon from '$lib/components/app/project-icon.svelte';
@@ -20,10 +24,29 @@
 	const projects = $derived(data.projects?.data ?? []);
 
 	const key = $derived(page.params.key ?? '');
-	const project = $derived(projects.find((p) => p.key === key));
+	const saved = $derived(projects.find((p) => p.key === key));
+
+	/**
+	 * A repo from the cached list that no skill has made a project yet. It gets
+	 * the same page, empty; binding a skill from the menu creates the project,
+	 * and `saved` takes over.
+	 */
+	const repos = new UseRepos(() => data.repos);
+	const cached = $derived(repos.find(key));
+	const project = $derived<(typeof projects)[number] | MenuProject | undefined>(
+		saved ?? (cached && { _id: key, key, unsaved: true })
+	);
+	const description = $derived(saved?.repo?.description ?? cached?.description);
 	const parts = $derived(projectParts(key));
 
 	const actions = new SkillActions();
+
+	const client = useConvexClient();
+
+	// a stale GitHub description, refreshed once the page is up; see the project list
+	onMount(() => {
+		client.mutation(api.github.refreshStale, {}).catch(() => {});
+	});
 
 	/**
 	 * Read through `actions` so toggling this project off in a row's menu takes
@@ -55,9 +78,9 @@
 			{parts.path}
 		</h1>
 
-		{#if project?.repo?.description}
-			<p class="text-sm leading-relaxed text-muted-foreground">{project.repo.description}</p>
-		{:else if project?.repo?.reachable === false}
+		{#if description}
+			<p class="text-sm leading-relaxed text-muted-foreground">{description}</p>
+		{:else if saved?.repo?.reachable === false}
 			<p class="text-sm leading-relaxed text-muted-foreground">
 				Private repo, not shared with {APP_NAME}.
 				<a
@@ -68,7 +91,7 @@
 				</a>
 				to show its details.
 			</p>
-		{:else if project && !project.repo && parts.host === 'github'}
+		{:else if saved && !saved.repo && !cached && parts.host === 'github'}
 			<!-- only until the first lookup lands -->
 			<Skeleton class="my-1 h-3.5 w-2/3" />
 		{/if}

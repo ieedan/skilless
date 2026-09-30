@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { api } from '@skilless/platform';
+	import { useConvexClient } from '@skilless/platform/client';
 	import { APP_NAME } from '$lib/constants';
+	import { UseInfinite } from '$lib/hooks/use-infinite.svelte';
 	import { UseRepos } from '$lib/hooks/use-repos.svelte';
 	import { projectParts, type ProjectParts } from '$lib/project';
 	import { around, search, terms } from '$lib/search';
@@ -23,10 +27,19 @@
 
 	/**
 	 * Every repo the GitHub app can see, cached, alongside the projects so the
-	 * ones without skills yet can be given one. Seeded by the server, which also
-	 * queues the first lookup.
+	 * ones without skills yet can be given one. Seeded by the server.
 	 */
 	const repos = new UseRepos(() => data.repos);
+
+	const client = useConvexClient();
+
+	// Queued once the page is up rather than in the load, which they would hold
+	// up: stale GitHub descriptions, and the repo list the first time. Both land
+	// through the live queries.
+	onMount(() => {
+		client.mutation(api.github.refreshStale, {}).catch(() => {});
+		repos.open();
+	});
 
 	type Project = (typeof projects)[number];
 	type Listed = Project | (MenuProject & { description: string | null });
@@ -40,13 +53,12 @@
 		description?: string;
 		unreachable: boolean;
 		pending: boolean;
-		count: number;
 	};
 
 	/**
 	 * Skills bound to a project, read through `actions` so the count moves with
 	 * a checkbox in the row's menu. Globals reach every project, so they would
-	 * only add noise.
+	 * only add noise. Worked out as a row renders, since it walks every skill.
 	 */
 	function count(project: MenuProject) {
 		return skills.filter((skill) => !actions.isGlobal(skill) && actions.isBound(skill, project))
@@ -66,8 +78,7 @@
 			description: repo?.description ?? cached ?? undefined,
 			unreachable: repo?.reachable === false,
 			// only the first lookup shows a skeleton; after that the cached copy stands in
-			pending: parts.host === 'github' && !repo && cached === undefined,
-			count: count(project)
+			pending: parts.host === 'github' && !repo && cached === undefined
 		};
 	}
 
@@ -80,25 +91,23 @@
 	function onSearch(value: string) {
 		query = value;
 		repos.search(value);
+		list.reset();
 	}
 
 	const queryTerms = $derived(terms(query));
 	const results = $derived(search(rows, query));
+
+	/** Every repo the app can see can run to hundreds of rows, each with a menu. */
+	const list = new UseInfinite();
 </script>
 
-{#snippet item({ project, parts, description, unreachable, pending, count }: Row)}
-	{@const unsaved = 'unsaved' in project && project.unsaved === true}
+{#snippet item({ project, parts, description, unreachable, pending }: Row)}
+	{@const n = count(project)}
 	<li class="relative flex items-center justify-between gap-4 py-3.5">
-		<!-- a repo with no project yet has no page to open -->
-		<svelte:element
-			this={unsaved ? 'div' : 'a'}
-			href={unsaved ? undefined : `/projects/${project.key}`}
-			class="flex min-w-0 items-start gap-3"
-		>
+		<!-- a repo with no skills yet opens too: its page is where you give it some -->
+		<a href="/projects/{project.key}" class="flex min-w-0 items-start gap-3">
 			<!-- stretched so the whole row is the hit target, without nesting the menu inside the link -->
-			{#if !unsaved}
-				<span class="absolute inset-0" aria-hidden="true"></span>
-			{/if}
+			<span class="absolute inset-0" aria-hidden="true"></span>
 			<ProjectIcon {parts} size="md" class="mt-0.5" />
 
 			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -107,8 +116,8 @@
 						<Highlighted text={parts.path} terms={queryTerms} />
 					</span>
 					<span class="shrink-0 text-xs text-muted-foreground">
-						{count}
-						{count === 1 ? 'skill' : 'skills'}
+						{n}
+						{n === 1 ? 'skill' : 'skills'}
 					</span>
 				</span>
 
@@ -127,7 +136,7 @@
 					<span class="text-[13px] text-muted-foreground">No description</span>
 				{/if}
 			</div>
-		</svelte:element>
+		</a>
 
 		<div class="relative shrink-0">
 			<ProjectMenu {project} {skills} {actions} />
@@ -177,7 +186,7 @@
 {:else}
 	<!-- nothing above the first row to clear, so it sits closer to the search -->
 	<ul class="divide-y divide-border [&>li:first-child]:pt-2">
-		{#each results as result (result.project.key)}
+		{#each list.slice(results) as result (result.project.key)}
 			{@render item(result)}
 		{/each}
 
@@ -194,4 +203,8 @@
 			{/each}
 		{/if}
 	</ul>
+
+	{#if list.more(results)}
+		<div {@attach list.sentinel} aria-hidden="true"></div>
+	{/if}
 {/if}

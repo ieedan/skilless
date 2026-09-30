@@ -14,6 +14,7 @@
 	import SkillRow from '$lib/components/app/skill-row.svelte';
 	import { downloadZip } from '$lib/download';
 	import { SkillActions } from '$lib/skill-actions.svelte';
+	import { UseInfinite } from '$lib/hooks/use-infinite.svelte';
 	import RiAddLine from 'remixicon-svelte/icons/add-line';
 	import RiDownload2Line from 'remixicon-svelte/icons/download-2-line';
 	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
@@ -44,6 +45,9 @@
 			query
 		)
 	);
+
+	/** Rows go on screen a page at a time; a new search or scope starts back at the top. */
+	const list = new UseInfinite();
 
 	let open = $state(false);
 	let creating = $state(false);
@@ -210,11 +214,26 @@
 				aria-label="Search skills"
 				class="h-full min-w-0 flex-1"
 				inputClass="h-full rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
-				bind:value={query}
+				bind:value={
+					() => query,
+					(value) => {
+						query = value;
+						list.reset();
+					}
+				}
 			/>
 		</div>
 
-		<Tabs.Root bind:value={scope} class="max-sm:hidden">
+		<Tabs.Root
+			bind:value={
+				() => scope,
+				(value) => {
+					scope = value as typeof scope;
+					list.reset();
+				}
+			}
+			class="max-sm:hidden"
+		>
 			<Tabs.List>
 				<Tabs.Trigger value="all">All</Tabs.Trigger>
 				<Tabs.Trigger value="global">Global</Tabs.Trigger>
@@ -237,7 +256,7 @@
 
 	<!-- nothing above the first row to clear, so it sits closer to the search -->
 	<ul class="divide-y divide-border [&>li:first-child]:pt-2">
-		{#each results as skill (skill._id)}
+		{#each list.slice(results) as skill (skill._id)}
 			<SkillRow
 				{skill}
 				{projects}
@@ -249,6 +268,10 @@
 			/>
 		{/each}
 	</ul>
+
+	{#if list.more(results)}
+		<div {@attach list.sentinel} aria-hidden="true"></div>
+	{/if}
 {/if}
 
 <Modal.Root bind:open>

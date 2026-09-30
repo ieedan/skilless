@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { APP_NAME } from '$lib/constants';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import RiAddLine from 'remixicon-svelte/icons/add-line';
 	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
@@ -60,7 +61,12 @@
 				{#each tokens as token (token._id)}
 					<li class="flex items-center justify-between gap-4 py-3.5">
 						<div class="flex min-w-0 flex-col gap-1">
-							<span class="truncate text-sm text-card-foreground">{token.name}</span>
+							<div class="flex min-w-0 items-center gap-2">
+								<span class="truncate text-sm text-card-foreground">{token.name}</span>
+								{#if token.kind === 'mcp'}
+									<Badge variant="outline" title="Connected over MCP">MCP</Badge>
+								{/if}
+							</div>
 							<span class="text-[13px] text-muted-foreground">
 								Created {day(token.createdAt)}
 								{#if token.lastUsedAt}

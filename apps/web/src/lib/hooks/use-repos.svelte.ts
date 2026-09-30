@@ -64,6 +64,11 @@ export class UseRepos {
 		return [...projects, ...repos].sort((a, b) => a.key.localeCompare(b.key));
 	}
 
+	/** A cached repo by project key, for the page of one that is not a project yet. */
+	find(key: string) {
+		return this.#query.data?.repos.find((repo) => repo.key === key);
+	}
+
 	#sync(force: boolean) {
 		// best effort: the cache, however old, still stands
 		this.#client.mutation(api.github.syncRepos, { force }).catch(() => {});
