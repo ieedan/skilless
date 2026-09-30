@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { listDirectory } from '$lib/files';
 	import { skillBadges } from '$lib/skill';
+	import { sourceParts } from '$lib/source';
 	import { SkillActions } from '$lib/skill-actions.svelte';
 	import PageActions from '$lib/components/app/page-actions.svelte';
 	import SkillMenu from '$lib/components/app/skill-menu.svelte';
@@ -10,6 +11,9 @@
 	import ReadingColumn from '$lib/components/app/reading-column.svelte';
 	import type { Icon } from '$lib/components/app/file-icon.svelte';
 	import { badgeVariants } from '$lib/components/ui/badge';
+	import GithubLogo from '$lib/components/app/github-logo.svelte';
+	import GitlabLogo from '$lib/components/app/gitlab-logo.svelte';
+	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import RiRobot2Line from 'remixicon-svelte/icons/robot-2-line';
 	import RiScales3Line from 'remixicon-svelte/icons/scales-3-line';
 	import RiToolsLine from 'remixicon-svelte/icons/tools-line';
@@ -24,6 +28,7 @@
 	const projects = $derived(data.projects?.data ?? []);
 
 	const badges = $derived(skillBadges(skill?.metadata));
+	const source = $derived(skill?.source ? sourceParts(skill.source) : null);
 	const entries = $derived(skill ? listDirectory(skill.files) : []);
 
 	/** The menu wants the same shape the skills list has. */
@@ -124,8 +129,35 @@
 			</div>
 		{/if}
 
-		{#if badges.modelInvocable || badges.version || badges.license || tools > 0}
+		{#if source || badges.modelInvocable || badges.version || badges.license || tools > 0}
 			<div class="flex flex-wrap items-center gap-1.5">
+				{#if source}
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<svelte:element
+									this={source.href ? 'a' : 'button'}
+									{...props}
+									href={source.href}
+									target={source.href ? '_blank' : undefined}
+									rel={source.href ? 'noreferrer' : undefined}
+									type={source.href ? undefined : 'button'}
+									class={badgeVariants({ variant: 'outline' })}
+								>
+									{#if source.host === 'github'}
+										<GithubLogo />
+									{:else if source.host === 'gitlab'}
+										<GitlabLogo />
+									{:else}
+										<RiGitRepositoryLine aria-hidden="true" />
+									{/if}
+									{source.path}
+								</svelte:element>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content>Added from this repository</Tooltip.Content>
+					</Tooltip.Root>
+				{/if}
 				{#if badges.modelInvocable}
 					{@render badge('Model Invocable', 'Agents can use this on their own', RiRobot2Line)}
 				{/if}
