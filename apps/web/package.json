@@ -28,6 +28,7 @@
 		"@hono/zod-openapi": "^1.1.4",
 		"@lezer/highlight": "^1.2.3",
 		"@mmailaender/convex-better-auth-svelte": "^0.8.1",
+		"@modelcontextprotocol/sdk": "^1.31.0",
 		"@skilless/platform": "workspace:*",
 		"@t3-oss/env-core": "^0.13.11",
 		"better-auth": "catalog:",

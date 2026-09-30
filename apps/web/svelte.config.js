@@ -9,7 +9,9 @@ const config = {
 	extensions: ['.svelte', '.md'],
 	preprocess: [mdsx(mdsxConfig), vitePreprocess()],
 	kit: {
-		adapter: adapter()
+		adapter: adapter(),
+		// checked in hooks.server.ts instead, which exempts the OAuth token endpoint
+		csrf: { trustedOrigins: ['*'] }
 	},
 	vitePlugin: {
 		/*

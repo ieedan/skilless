@@ -18,15 +18,12 @@
 		project,
 		skills,
 		actions,
-		onRemoved,
-		onBind
+		onRemoved
 	}: {
 		project: MenuProject;
 		skills: (MenuSkill & { description?: string })[];
 		actions: SkillActions;
 		onRemoved?: () => Promise<unknown>;
-		/** Before a skill is toggled from the Skills submenu. */
-		onBind?: () => void;
 	} = $props();
 
 	function uninstall() {
@@ -49,7 +46,7 @@
 </script>
 
 {#if mobile.current}
-	<ProjectMenuDrawer {project} {skills} {actions} {onBind} onUninstall={uninstall} />
+	<ProjectMenuDrawer {project} {skills} {actions} onUninstall={uninstall} />
 {:else}
-	<ProjectMenuDropdown {project} {skills} {actions} {onBind} onUninstall={uninstall} />
+	<ProjectMenuDropdown {project} {skills} {actions} onUninstall={uninstall} />
 {/if}

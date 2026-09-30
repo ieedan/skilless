@@ -262,6 +262,52 @@ export const upsertFor = secretAction({
 	}
 });
 
+/** Creates or replaces one file of an existing skill, leaving the others as they are. */
+export const writeFileFor = secretAction({
+	args: { userId: v.string(), name: v.string(), path: v.string(), contents: v.string() },
+	handler: async (ctx, args): Promise<Doc<'skills'>> => {
+		return await writeSkill(ctx, {
+			userId: args.userId,
+			name: args.name,
+			editedAt: Date.now(),
+			change: (current) => {
+				if (!current) throw createConvexError(convexError.SkillNotFound());
+
+				const rest = current.filter((file) => file.path !== args.path);
+				return [...rest, { path: args.path, contents: args.contents }];
+			}
+		});
+	}
+});
+
+/** Removes a file, or every file beneath a directory prefix. Returns how many. */
+export const deletePathFor = secretAction({
+	args: { userId: v.string(), name: v.string(), path: v.string() },
+	handler: async (ctx, args): Promise<number> => {
+		const prefix = `${args.path}/`;
+		let removed = 0;
+
+		await writeSkill(ctx, {
+			userId: args.userId,
+			name: args.name,
+			editedAt: Date.now(),
+			change: (current) => {
+				if (!current) throw createConvexError(convexError.SkillNotFound());
+
+				const kept = current.filter(
+					(file) => file.path !== args.path && !file.path.startsWith(prefix)
+				);
+				removed = current.length - kept.length;
+				if (removed === 0) throw createConvexError(convexError.SkillFileNotFound());
+
+				return kept;
+			}
+		});
+
+		return removed;
+	}
+});
+
 /* ---------------------------------------------------------------- backfill */
 
 /**

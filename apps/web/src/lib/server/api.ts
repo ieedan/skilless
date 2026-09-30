@@ -1,11 +1,8 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { api as convex } from '@skilless/platform';
-import { fetchFiles, SecretClient } from '@skilless/platform/client';
-import { ConvexHttpClient } from 'convex/browser';
-import { env } from '$lib/env.server';
-import { containsNul, hashToken, type SkillFile } from './hash';
-
-const MAX_SKILL_BYTES = 1024 * 1024;
+import { fetchFiles, type SecretClient } from '@skilless/platform/client';
+import { authenticate } from './auth';
+import { toSkill, validateFiles } from './skills';
 
 type Variables = { userId: string; convex: SecretClient };
 
@@ -51,41 +48,6 @@ const ErrorSchema = z
 	})
 	.openapi('Error');
 
-type SkillDoc = {
-	name: string;
-	contentHash: string;
-	editedAt: number;
-	updatedAt: number;
-	global?: boolean;
-	source?: z.infer<typeof SourceSchema>;
-};
-
-/** Never hand back `_id` or `userId` — the CLI has no use for them. */
-function toSkill(doc: SkillDoc) {
-	return {
-		name: doc.name,
-		contentHash: doc.contentHash,
-		editedAt: doc.editedAt,
-		updatedAt: doc.updatedAt,
-		global: doc.global ?? false,
-		source: doc.source ?? null
-	};
-}
-
-function validateFiles(files: SkillFile[]): string | null {
-	let bytes = 0;
-
-	for (const file of files) {
-		if (containsNul(file.contents)) return `${file.path} is not text.`;
-		bytes += Buffer.byteLength(file.contents, 'utf8');
-	}
-
-	if (bytes > MAX_SKILL_BYTES) return 'Skill is larger than 1MB.';
-	if (!files.some((file) => file.path === 'SKILL.md')) return 'Skill has no SKILL.md.';
-
-	return null;
-}
-
 const app = new OpenAPIHono<{ Variables: Variables }>();
 
 app.use('/api/v1/*', async (c, next) => {
@@ -97,18 +59,14 @@ app.use('/api/v1/*', async (c, next) => {
 		return c.json({ error: 'unauthorized', message: 'Missing bearer token.' }, 401);
 	}
 
-	const client = new SecretClient(new ConvexHttpClient(env.PUBLIC_CONVEX_URL), env.FUNCTION_SECRET);
+	const auth = await authenticate(header);
 
-	try {
-		const { userId } = await client.mutation(convex.tokens.verify, {
-			hash: hashToken(header.slice('Bearer '.length))
-		});
-
-		c.set('userId', userId);
-		c.set('convex', client);
-	} catch {
+	if (!auth) {
 		return c.json({ error: 'unauthorized', message: 'That token is not valid.' }, 401);
 	}
+
+	c.set('userId', auth.userId);
+	c.set('convex', auth.convex);
 
 	await next();
 });

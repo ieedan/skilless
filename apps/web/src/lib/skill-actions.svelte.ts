@@ -133,12 +133,39 @@ export class SkillActions {
 		});
 	}
 
-	async copyInstall(skill: MenuSkill) {
-		if ((await copyText(`skilless add ${skill.name}`)) === 'success') {
+	copyInstall(skill: MenuSkill) {
+		return this.copyInstallAll([skill]);
+	}
+
+	/** One command for the lot: `skilless add` takes any number of names. */
+	async copyInstallAll(skills: MenuSkill[]) {
+		const names = skills.map((skill) => skill.name).join(' ');
+		if ((await copyText(`skilless add ${names}`)) === 'success') {
 			toast.success('Copied install command');
 		} else {
 			toast.error('Could not copy to the clipboard');
 		}
+	}
+
+	/** One confirmation for the lot, then a delete each; reports what did not go. */
+	removeMany(skills: MenuSkill[], onRemoved?: () => unknown) {
+		if (skills.length === 1) return this.remove(skills[0], async () => onRemoved?.());
+
+		confirmDelete({
+			title: `Delete ${skills.length} skills?`,
+			description: 'This removes them from every project. It cannot be undone from here.',
+			confirm: { text: `Delete ${skills.length}` },
+			onConfirm: async () => {
+				const results = await Promise.all(
+					skills.map((skill) =>
+						submitAction('/skills?/remove', { name: skill.name }, this.#options).catch(() => null)
+					)
+				);
+				const failed = results.filter((result) => result?.type !== 'success').length;
+				if (failed > 0) toast.error(`Could not delete ${failed} of ${skills.length} skills`);
+				await onRemoved?.();
+			}
+		});
 	}
 
 	remove(skill: MenuSkill, onRemoved?: () => Promise<unknown>) {

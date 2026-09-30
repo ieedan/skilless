@@ -27,5 +27,14 @@ export const actions = {
 		if (!tokenId) return fail(400, { message: 'Missing token.' });
 
 		await locals.convex.mutation(api.tokens.revoke, { tokenId: tokenId as never });
+	},
+
+	// posted from the account menu, which is on every page
+	setHideEmail: async ({ locals, request }) => {
+		const data = await request.formData();
+
+		await locals.convex.mutation(api.preferences.setHideEmail, {
+			hideEmail: data.get('hideEmail') === 'true'
+		});
 	}
 };

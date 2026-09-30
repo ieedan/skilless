@@ -20,15 +20,19 @@
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from 'bits-ui';
 	import { cn } from '$lib/utils.js';
+	import { useTabs } from './tabs.svelte.js';
 
 	let {
 		ref = $bindable(null),
 		variant = 'default',
 		class: className,
+		onpointerleave,
 		...restProps
 	}: TabsPrimitive.ListProps & {
 		variant?: TabsListVariant;
 	} = $props();
+
+	const tabs = useTabs();
 </script>
 
 <TabsPrimitive.List
@@ -36,5 +40,9 @@
 	data-slot="tabs-list"
 	data-variant={variant}
 	class={cn(tabsListVariants({ variant }), className)}
+	onpointerleave={(e) => {
+		tabs.hovered = null;
+		onpointerleave?.(e);
+	}}
 	{...restProps}
 />

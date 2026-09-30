@@ -11,7 +11,7 @@ type AuthUser = { name?: string | null; email?: string | null; _id?: string; id?
 
 /**
  * better-auth's GitHub provider gives us a display name and an email, but not
- * the GitHub login — so the sidebar shows the email rather than inventing an
+ * the GitHub login — so the account menu shows the email rather than inventing an
  * `@handle` that would not match the real one.
  */
 export function toAppUser(user: AuthUser, { hideEmail = false } = {}): AppUser {

@@ -11,14 +11,11 @@
 		project,
 		skills,
 		actions,
-		onBind,
 		onUninstall
 	}: {
 		project: MenuProject;
 		skills: (MenuSkill & { description?: string })[];
 		actions: SkillActions;
-		/** Before a skill is toggled from the Skills submenu. */
-		onBind?: () => void;
 		onUninstall: () => void;
 	} = $props();
 
@@ -39,10 +36,7 @@
 			{skills}
 			isGlobal={(skill) => actions.isGlobal(skill)}
 			isBound={(skill) => actions.isBound(skill, project)}
-			onToggle={(skill, bound) => {
-				onBind?.();
-				actions.setBinding(skill, project, bound);
-			}}
+			onToggle={(skill, bound) => actions.setBinding(skill, project, bound)}
 		/>
 
 		<!-- nothing to uninstall until a skill makes it a project -->

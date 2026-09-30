@@ -1,6 +1,8 @@
 <script lang="ts" generics="Skill extends { _id: string; name: string; description?: string }">
 	import { DropdownMenu as DropdownMenuPrimitive } from 'bits-ui';
+	import { around, search, terms } from '$lib/search';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import Highlighted from './highlighted.svelte';
 	import RiCheckLine from 'remixicon-svelte/icons/check-line';
 	import RiCodeSSlashLine from 'remixicon-svelte/icons/code-s-slash-line';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
@@ -22,19 +24,17 @@
 	let input = $state<HTMLInputElement | null>(null);
 	let content = $state<HTMLElement | null>(null);
 
-	const needle = $derived(query.trim().toLowerCase());
+	const queryTerms = $derived(terms(query));
 
-	/** Globals last: they cannot be toggled here, so they should not sit between the ones that can. */
-	const filtered = $derived.by(() => {
-		const list = needle
-			? skills.filter(
-					(skill) =>
-						skill.name.toLowerCase().includes(needle) ||
-						skill.description?.toLowerCase().includes(needle)
-				)
-			: skills;
-		return [...list.filter((s) => !isGlobal(s)), ...list.filter((s) => isGlobal(s))];
-	});
+	/**
+	 * Ranked like the skills page while searching. Otherwise globals go last:
+	 * they cannot be toggled here, so they should not sit between the ones that can.
+	 */
+	const filtered = $derived(
+		query.trim()
+			? search(skills, query)
+			: [...skills.filter((s) => !isGlobal(s)), ...skills.filter((s) => isGlobal(s))]
+	);
 
 	/** See ProjectSubmenu: keep keys in the field, except Escape and ArrowDown. */
 	function onkeydown(event: KeyboardEvent) {
@@ -109,7 +109,9 @@
 
 						<span class="flex min-w-0 flex-col gap-0.5 {global ? 'opacity-60' : ''}">
 							<span class="flex min-w-0 items-center gap-1.5">
-								<span class="truncate font-mono text-[13px] font-semibold">{skill.name}</span>
+								<span class="truncate font-mono text-[13px] font-semibold">
+									<Highlighted text={skill.name} terms={queryTerms} /></span
+								>
 								{#if global}
 									<RiGlobalLine
 										class="size-3.5 shrink-0 text-muted-foreground"
@@ -118,7 +120,11 @@
 								{/if}
 							</span>
 							<span class="line-clamp-1 text-xs text-muted-foreground">
-								{skill.description || 'No description'}
+								{#if skill.description}
+									<Highlighted text={around(skill.description, queryTerms)} terms={queryTerms} />
+								{:else}
+									No description
+								{/if}
 							</span>
 						</span>
 					{/snippet}

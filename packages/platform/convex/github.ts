@@ -223,11 +223,142 @@ export const installation = action({
 	}
 });
 
-export const repos = action({
+/** A repo as the project pickers list it: a project key, whether or not it is a project yet. */
+const repoKey = (fullName: string) => `github.com/${fullName.toLowerCase()}`;
+
+/**
+ * The user's cached GitHub repos. `syncedAt` is null until the first lookup
+ * settles, and `syncing` is true while one is in flight.
+ */
+export const cachedRepos = query({
 	args: {},
-	handler: async (ctx): Promise<{ repos: GithubRepo[]; installUrl: string }> => {
+	handler: async (ctx) => {
+		const user = await ctx.auth.getUserIdentity();
+		if (!user) return { repos: [], syncedAt: null, syncing: false };
+
+		const [repos, sync] = await Promise.all([
+			ctx.db
+				.query('repos')
+				.withIndex('by_user', (q) => q.eq('userId', user.subject))
+				.collect(),
+			ctx.db
+				.query('repoSyncs')
+				.withIndex('by_user', (q) => q.eq('userId', user.subject))
+				.unique()
+		]);
+
+		return {
+			repos: repos
+				.map(({ key, description }) => ({ key, description }))
+				.sort((a, b) => a.key.localeCompare(b.key)),
+			syncedAt: sync?.syncedAt ?? null,
+			syncing: sync?.requestedAt !== undefined
+		};
+	}
+});
+
+/** How long a search waits after the last lookup before asking GitHub again. */
+const RESYNC_MS = 30 * 1000;
+/** A lookup still marked in flight after this is assumed lost, and may be queued again. */
+const LOST_MS = 2 * 60 * 1000;
+
+/**
+ * Queues a lookup of the user's repos on GitHub. Without `force` it only runs
+ * the first time, to fill the cache; after that the pickers read the cache and
+ * only a search forces a fresh look, in case the repo is newer than it.
+ */
+export const syncRepos = mutation({
+	args: { force: v.boolean() },
+	handler: async (ctx, args) => {
 		const userId = await requireUser(ctx);
-		return { repos: await listRepos(await githubToken(ctx, userId)), installUrl };
+		const now = Date.now();
+
+		const sync = await ctx.db
+			.query('repoSyncs')
+			.withIndex('by_user', (q) => q.eq('userId', userId))
+			.unique();
+
+		if (sync?.requestedAt !== undefined && now - sync.requestedAt < LOST_MS) return;
+		if (sync?.syncedAt !== undefined && (!args.force || now - sync.syncedAt < RESYNC_MS)) return;
+
+		if (sync) await ctx.db.patch(sync._id, { requestedAt: now });
+		else await ctx.db.insert('repoSyncs', { userId, requestedAt: now });
+
+		await ctx.scheduler.runAfter(0, internal.github.fetchRepos, { userId });
+	}
+});
+
+export const fetchRepos = internalAction({
+	args: { userId: v.string() },
+	handler: async (ctx, args) => {
+		let repos: GithubRepo[] | null = null;
+		try {
+			repos = await listRepos(await githubToken(ctx, args.userId));
+		} catch {
+			// signed in some other way, or GitHub is having a moment. The cache stands.
+		}
+
+		await ctx.runMutation(internal.github.saveRepoList, {
+			userId: args.userId,
+			repos:
+				repos?.map((repo) => ({
+					key: repoKey(repo.fullName),
+					description: repo.description,
+					private: repo.private
+				})) ?? null
+		});
+	}
+});
+
+/** Replaces the user's cached repos with GitHub's list, or with `null` just ends the lookup. */
+export const saveRepoList = internalMutation({
+	args: {
+		userId: v.string(),
+		repos: v.union(
+			v.array(
+				v.object({
+					key: v.string(),
+					description: v.union(v.string(), v.null()),
+					private: v.boolean()
+				})
+			),
+			v.null()
+		)
+	},
+	handler: async (ctx, args) => {
+		const now = Date.now();
+
+		if (args.repos) {
+			const existing = await ctx.db
+				.query('repos')
+				.withIndex('by_user', (q) => q.eq('userId', args.userId))
+				.collect();
+			const byKey = new Map(existing.map((row) => [row.key, row]));
+
+			for (const repo of args.repos) {
+				const row = byKey.get(repo.key);
+				byKey.delete(repo.key);
+				if (!row) {
+					await ctx.db.insert('repos', { userId: args.userId, ...repo });
+				} else if (row.description !== repo.description || row.private !== repo.private) {
+					await ctx.db.patch(row._id, { description: repo.description, private: repo.private });
+				}
+			}
+
+			// no longer shared with the app, or gone
+			for (const row of byKey.values()) await ctx.db.delete(row._id);
+		}
+
+		const sync = await ctx.db
+			.query('repoSyncs')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.unique();
+
+		// a failed first lookup still counts, so opening a picker does not retry it
+		// every time; a search will
+		const syncedAt = args.repos ? now : (sync?.syncedAt ?? now);
+		if (sync) await ctx.db.patch(sync._id, { syncedAt, requestedAt: undefined });
+		else await ctx.db.insert('repoSyncs', { userId: args.userId, syncedAt });
 	}
 });
 
