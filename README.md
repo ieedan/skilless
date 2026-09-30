@@ -43,9 +43,9 @@ npx skilless list
 
 ### Sync your skills with skilless.dev (optional)
 
-If you'd like you can also sync your skills so that every machine and cloud environment uses the same skills. 
+If you'd like you can also sync your skills so that every machine and cloud environment uses the same skills.
 
-1. Run 
+1. Run
 
 ```sh
 npx skilless auth
@@ -66,4 +66,3 @@ SKILLESS_TOKEN=<your-token> npx skilless install
 ```
 
 This will automatically detect the git remote and install the skills assigned to that specific repository, as well as any global skills.
-
