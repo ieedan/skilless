@@ -56,6 +56,17 @@
 	let name = $state('');
 	const nameInvalid = $derived(name.length > 0 && !isValidName(name));
 
+	/** Names are lowercase, so fold capitals as they are typed instead of flagging them. */
+	function lowercaseName(event: Event & { currentTarget: HTMLInputElement }) {
+		const input = event.currentTarget;
+		const lower = input.value.toLowerCase();
+		if (lower === input.value) return;
+		const { selectionStart, selectionEnd } = input;
+		input.value = lower;
+		input.setSelectionRange(selectionStart, selectionEnd);
+		name = lower;
+	}
+
 	/** Optimistic binding and global state, shared with each row's menu. */
 	const actions = new SkillActions();
 
@@ -305,6 +316,7 @@
 						autocomplete="off"
 						spellcheck="false"
 						bind:value={name}
+						oninput={lowercaseName}
 						aria-invalid={nameInvalid}
 						aria-describedby={nameInvalid ? 'skill-name-rules' : undefined}
 					/>

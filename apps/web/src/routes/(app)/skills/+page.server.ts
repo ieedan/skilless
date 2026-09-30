@@ -17,7 +17,9 @@ export async function load() {
 export const actions = {
 	create: async ({ locals, request }) => {
 		const data = await request.formData();
-		const name = String(data.get('name') ?? '').trim();
+		const name = String(data.get('name') ?? '')
+			.trim()
+			.toLowerCase();
 		const description = String(data.get('description') ?? '').trim();
 
 		if (!name) return fail(400, { name, description, message: 'A name is required.' });
