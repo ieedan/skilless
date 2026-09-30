@@ -5,6 +5,10 @@
   </picture>
 </p>
 
+```sh
+npx skilless init
+```
+
 skilless is a new way to manage your skills. Instead of copying the same skill into every one of the projects that uses it or forcing it to be applied at the user level skilless allows you to invisibly add skills to specific projects with one source of truth for each skill.
 
 ## The problem
@@ -25,10 +29,14 @@ To get started simply run:
 
 ```sh
 npx skilless init
+# migrate you existing skills
+npx skilless migrate
 ```
 
-Then you can start adding skills to your projects by running it just like the `skills` cli:
+Then you can start adding skills to your projects just like the `skills` cli:
 
 ```sh
 npx skilless add mattpocock/skills
+# list your skills
+npx skilless list
 ```
