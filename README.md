@@ -40,3 +40,30 @@ npx skilless add mattpocock/skills
 # list your skills
 npx skilless list
 ```
+
+### Sync your skills with skilless.dev (optional)
+
+If you'd like you can also sync your skills so that every machine and cloud environment uses the same skills. 
+
+1. Run 
+
+```sh
+npx skilless auth
+```
+
+2. Push your local skills to skilless.dev
+
+```sh
+npx skilless sync
+```
+
+Once you've synced your skills you can manage them from [skilless.dev](https://skilless.dev) or using the CLI.
+
+In cloud environments all you need to do is run:
+
+```sh
+SKILLESS_TOKEN=<your-token> npx skilless install
+```
+
+This will automatically detect the git remote and install the skills assigned to that specific repository, as well as any global skills.
+
