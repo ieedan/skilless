@@ -14,7 +14,7 @@ import {
 	writeEnvFile
 } from './lib';
 
-export type SetupMode = 'dev' | 'prod' | 'preview';
+export type SetupMode = 'dev' | 'prod';
 
 export type StepContext = {
 	options: { fresh: boolean; cwd: string };
@@ -518,7 +518,7 @@ async function vercelLink(ctx: StepContext): Promise<void> {
  */
 function vercelEnvSet(
 	ctx: StepContext,
-	target: 'production' | 'preview',
+	target: 'production',
 	values: Record<string, string | undefined>
 ): Promise<void> {
 	return task(`Setting ${target} Vercel variables`, () => {
@@ -563,11 +563,9 @@ const vercelProd: Step = {
 
 		await vercelEnvSet(ctx, 'production', {
 			CONVEX_DEPLOY_KEY: recall(ctx, 'CONVEX_DEPLOY_KEY'),
-			FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET'),
-			// the build gets PUBLIC_CONVEX_URL from `convex deploy`; the server
-			// reads both again at runtime, where nothing injects them
-			PUBLIC_CONVEX_URL: recall(ctx, 'PUBLIC_CONVEX_URL'),
-			PUBLIC_CONVEX_SITE_URL: recall(ctx, 'PUBLIC_CONVEX_SITE_URL')
+			// no PUBLIC_CONVEX_URL: `vercel:deploy` writes the one `convex deploy`
+			// hands it into env.server.ts before building
+			FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET')
 		});
 
 		note('Set the build command in the project settings to:', 'Convex deploys from Vercel');
@@ -583,69 +581,6 @@ const prodDone: Step = {
 			`${recall(ctx, 'SITE_URL')}\n\nSign in, then mint a token under Tokens for your cloud agents.`,
 			'Ready'
 		);
-	}
-};
-
-/* ---------------------------------------------------------------- preview */
-
-const previewKey: Step = {
-	name: 'preview-key',
-	run: async (ctx) => {
-		note(
-			'https://dashboard.convex.dev\n\nYour project → Settings → Deploy keys → Generate a preview deploy key.',
-			'Convex preview deploy key'
-		);
-
-		const key = await password({
-			message: 'CONVEX_DEPLOY_KEY',
-			validate: (value) => (value?.trim() ? undefined : 'Required.')
-		});
-		exitIfCancelled(key);
-
-		remember(ctx, 'CONVEX_DEPLOY_KEY', key.trim());
-	}
-};
-
-const previewVercel: Step = {
-	name: 'preview-vercel',
-	run: async (ctx) => {
-		remember(ctx, 'FUNCTION_SECRET', recall(ctx, 'FUNCTION_SECRET') ?? generateSecret());
-
-		await vercelLink(ctx);
-
-		await vercelEnvSet(ctx, 'preview', {
-			CONVEX_DEPLOY_KEY: recall(ctx, 'CONVEX_DEPLOY_KEY'),
-			FUNCTION_SECRET: recall(ctx, 'FUNCTION_SECRET')
-		});
-
-		note(
-			'Each preview gets its own Convex deployment, so its variables are set by the deploy key rather than copied here. PUBLIC_CONVEX_URL is filled in by the build.',
-			'Why there is no PUBLIC_CONVEX_URL'
-		);
-
-		note(
-			[
-				'https://dashboard.convex.dev',
-				'',
-				'Your project → Settings → Environment Variables → Default for preview deployments.',
-				'Add R2_BUCKET, R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and',
-				'R2_PUBLIC_URL — a bucket of its own, not production’s. Without them previews',
-				'can show skills but not open or save their files.'
-			].join('\n'),
-			'Preview R2 bucket'
-		);
-
-		note(
-			'GitHub App callbacks cannot be wildcarded, so sign in does not work on a preview URL until you add that exact URL as a callback URL on the GitHub App (it takes up to 10).',
-			'Sign in on previews'
-		);
-	}
-};
-
-const previewDone: Step = {
-	name: 'done',
-	run: async () => {
-		note('Push a branch and open the Vercel preview.', 'Ready');
 	}
 };
 
@@ -678,5 +613,3 @@ export const prodSteps: Step[] = [
 	vercelProd,
 	prodDone
 ];
-
-export const previewSteps: Step[] = [dependencies, previewKey, previewVercel, previewDone];

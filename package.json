@@ -23,8 +23,7 @@
 		"ci:release": "pnpm build:cli && changeset publish",
 		"setup": "tsx scripts/setup/cli.ts",
 		"setup:dev": "tsx scripts/setup/cli.ts dev",
-		"setup:prod": "tsx scripts/setup/cli.ts prod",
-		"setup:preview": "tsx scripts/setup/cli.ts preview"
+		"setup:prod": "tsx scripts/setup/cli.ts prod"
 	},
 	"devDependencies": {
 		"@changesets/changelog-github": "^1.0.1",

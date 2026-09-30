@@ -16,7 +16,7 @@
 	"scripts": {
 		"dev": "convex dev",
 		"check": "tsc --noEmit",
-		"deploy:preview": "CONVEX_VERBOSE=1 convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd='pnpm -F web build'"
+		"deploy:preview": "CONVEX_VERBOSE=1 convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd='sed -i.bak \"s|{{CONVEX_URL_FROM_CLI}}|${PUBLIC_CONVEX_URL}|\" ../../apps/web/src/lib/env.server.ts && rm -f ../../apps/web/src/lib/env.server.ts.bak && pnpm -F web build'"
 	},
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.1138.0",

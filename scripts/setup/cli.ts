@@ -6,14 +6,7 @@ import { cancel, confirm, intro, isCancel, log, outro } from '@clack/prompts';
 import dotenvx from '@dotenvx/dotenvx';
 import { Command, Option, program } from 'commander';
 import { z } from 'zod';
-import {
-	devSteps,
-	previewSteps,
-	prodSteps,
-	type SetupMode,
-	type Step,
-	type StepContext
-} from './steps';
+import { devSteps, prodSteps, type SetupMode, type Step, type StepContext } from './steps';
 
 const commonOptions = {
 	fresh: new Option('-f, --fresh', 'Ignore any existing setup and start from scratch.'),
@@ -28,7 +21,7 @@ const setupSchema = z.object({
 type SetupOptions = z.infer<typeof setupSchema>;
 
 const draftSchema = z.object({
-	mode: z.enum(['dev', 'prod', 'preview']),
+	mode: z.enum(['dev', 'prod']),
 	step: z.string(),
 	data: z.record(z.string(), z.unknown()).default({})
 });
@@ -170,9 +163,8 @@ function command(mode: SetupMode, description: string, steps: Step[]) {
 
 const cli = program
 	.name('setup')
-	.description('Set skilless up for development, production, or preview deployments.')
+	.description('Set skilless up for development or production.')
 	.addCommand(command('dev', 'Set this project up for development.', devSteps))
-	.addCommand(command('prod', 'Set this project up for production.', prodSteps))
-	.addCommand(command('preview', 'Configure Vercel preview deployments.', previewSteps));
+	.addCommand(command('prod', 'Set this project up for production.', prodSteps));
 
 cli.parse();
