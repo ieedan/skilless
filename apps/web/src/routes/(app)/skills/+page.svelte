@@ -10,13 +10,13 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
+	import SearchInput from '$lib/components/app/search-input.svelte';
 	import SkillRow from '$lib/components/app/skill-row.svelte';
 	import { downloadZip } from '$lib/download';
 	import { SkillActions } from '$lib/skill-actions.svelte';
 	import RiAddLine from 'remixicon-svelte/icons/add-line';
 	import RiDownload2Line from 'remixicon-svelte/icons/download-2-line';
 	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
-	import RiSearchLine from 'remixicon-svelte/icons/search-line';
 	import { search, terms } from '$lib/search';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { collapseX } from '$lib/transitions';
@@ -205,21 +205,13 @@
 					aria-label="Select all shown skills"
 				/>
 			</div>
-			<div class="relative h-full min-w-0 flex-1">
-				<RiSearchLine
-					class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-					aria-hidden="true"
-				/>
-				<Input
-					type="search"
-					placeholder="Search skills"
-					aria-label="Search skills"
-					autocomplete="off"
-					spellcheck="false"
-					class="h-full rounded-none border-0 bg-transparent pl-8 shadow-none focus-visible:ring-0 dark:bg-transparent"
-					bind:value={query}
-				/>
-			</div>
+			<SearchInput
+				placeholder="Search skills"
+				aria-label="Search skills"
+				class="h-full min-w-0 flex-1"
+				inputClass="h-full rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent"
+				bind:value={query}
+			/>
 		</div>
 
 		<Tabs.Root bind:value={scope} class="max-sm:hidden">

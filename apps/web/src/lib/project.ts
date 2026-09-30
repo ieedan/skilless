@@ -6,6 +6,8 @@ export type ProjectParts = {
 	owner: string;
 	/** Everything after the hostname, e.g. `ieedan/skilless`. */
 	path: string;
+	/** The last path segment, e.g. `skilless`. What search ranks first. */
+	name: string;
 	/** The owner's avatar, where the host serves one without an API call. */
 	avatar?: string;
 };
@@ -30,6 +32,7 @@ export function projectParts(key: string): ProjectParts {
 		host,
 		owner,
 		path,
+		name: path.slice(path.lastIndexOf('/') + 1),
 		avatar: host === 'github' ? `https://github.com/${owner}.png?size=80` : undefined
 	};
 }

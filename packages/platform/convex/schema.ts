@@ -79,6 +79,30 @@ export default defineSchema({
 		.index('by_user_and_key', ['userId', 'key'])
 		.index('by_user', ['userId']),
 
+	/**
+	 * The GitHub repos the app can reach for a user, cached by `github.fetchRepos`
+	 * so the project pickers read them from here rather than waiting on GitHub.
+	 * A repo only becomes a project once a skill is bound to it.
+	 */
+	repos: defineTable({
+		userId: v.string(),
+		/** A project key, e.g. `github.com/ieedan/skilless`. */
+		key: v.string(),
+		description: v.union(v.string(), v.null()),
+		private: v.boolean()
+	})
+		.index('by_user', ['userId'])
+		.index('by_user_and_key', ['userId', 'key']),
+
+	/** When a user's `repos` were last filled from GitHub. At most one row per user. */
+	repoSyncs: defineTable({
+		userId: v.string(),
+		/** Absent until the first lookup settles. */
+		syncedAt: v.optional(v.number()),
+		/** Set while a lookup is in flight, so opening several pickers queues just one. */
+		requestedAt: v.optional(v.number())
+	}).index('by_user', ['userId']),
+
 	bindings: defineTable({
 		projectId: v.id('projects'),
 		skillId: v.id('skills')

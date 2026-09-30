@@ -161,6 +161,11 @@
 		@apply bg-background font-sans text-foreground antialiased;
 	}
 
+	/* SearchInput draws a lighter one */
+	input[type='search']::-webkit-search-cancel-button {
+		appearance: none;
+	}
+
 	/*
 	 * A phone paints its own surfaces from the page canvas, and the canvas comes
 	 * from the body: iOS tints the area behind the status bar with it, and both

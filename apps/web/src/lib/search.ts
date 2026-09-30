@@ -1,7 +1,16 @@
 /** A slice of text, flagged when it is part of a search match. */
 export type Segment = { text: string; match: boolean };
 
-export type Searchable = { name: string; description?: string | null };
+export type Searchable = {
+	name: string;
+	/**
+	 * The part of the name people search by, ranked ahead of the rest — a
+	 * repo's name without its owner, so `skilless` finds `ieedan/skilless`
+	 * before everything else `ieedan` owns.
+	 */
+	shortName?: string;
+	description?: string | null;
+};
 
 /** Whitespace-separated, lowercased, de-duplicated. Every term must match somewhere. */
 export function terms(query: string): string[] {
@@ -11,8 +20,9 @@ export function terms(query: string): string[] {
 /**
  * The items where every term appears in the name or description, best first:
  * exact name, then names starting with the query, then names containing it,
- * then names matching some terms, then description-only matches. Ties keep the
- * input order, which is the library's own sort.
+ * then names matching some terms, then description-only matches. At each step
+ * a `shortName` match beats a match elsewhere in the name. Ties keep the input
+ * order, which is the library's own sort.
  */
 export function search<T extends Searchable>(items: T[], query: string): T[] {
 	const q = query.trim().toLowerCase();
@@ -23,20 +33,25 @@ export function search<T extends Searchable>(items: T[], query: string): T[] {
 
 	items.forEach((item, index) => {
 		const name = item.name.toLowerCase();
+		const short = item.shortName?.toLowerCase();
 		const description = (item.description ?? '').toLowerCase();
 
 		if (!ts.every((t) => name.includes(t) || description.includes(t))) return;
 
 		const rank =
-			name === q
+			name === q || short === q
 				? 0
-				: name.startsWith(q)
+				: short?.startsWith(q)
 					? 1
-					: name.includes(q)
+					: name.startsWith(q)
 						? 2
-						: ts.some((t) => name.includes(t))
+						: short?.includes(q)
 							? 3
-							: 4;
+							: name.includes(q)
+								? 4
+								: ts.some((t) => name.includes(t))
+									? 5
+									: 6;
 
 		ranked.push({ item, rank, index });
 	});

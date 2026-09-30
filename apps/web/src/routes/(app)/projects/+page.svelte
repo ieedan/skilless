@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { SvelteSet } from 'svelte/reactivity';
 	import { APP_NAME } from '$lib/constants';
+	import { UseRepos } from '$lib/hooks/use-repos.svelte';
 	import { projectParts, type ProjectParts } from '$lib/project';
-	import { around, highlight, search, terms } from '$lib/search';
+	import { around, search, terms } from '$lib/search';
 	import { SkillActions, type MenuProject } from '$lib/skill-actions.svelte';
 	import ProjectMenu from '$lib/components/app/project-menu.svelte';
+	import Highlighted from '$lib/components/app/highlighted.svelte';
 	import ProjectIcon from '$lib/components/app/project-icon.svelte';
-	import { Input } from '$lib/components/ui/input';
+	import SearchInput from '$lib/components/app/search-input.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import RiSearchLine from 'remixicon-svelte/icons/search-line';
 
 	let { data } = $props();
 
@@ -21,13 +21,22 @@
 
 	const actions = new SkillActions();
 
+	/**
+	 * Every repo the GitHub app can see, cached, alongside the projects so the
+	 * ones without skills yet can be given one. Seeded by the server, which also
+	 * queues the first lookup.
+	 */
+	const repos = new UseRepos(() => data.repos);
+
 	type Project = (typeof projects)[number];
+	type Listed = Project | (MenuProject & { description: string | null });
 
 	type Row = {
-		project: Project | MenuProject;
+		project: Listed;
 		parts: ProjectParts;
-		// `search` matches on these two
+		// `search` matches on these
 		name: string;
+		shortName: string;
 		description?: string;
 		unreachable: boolean;
 		pending: boolean;
@@ -44,59 +53,40 @@
 			.length;
 	}
 
-	/** `fallback` is GitHub's description from the repo list, for rows in the lower list. */
-	function row(project: Project | MenuProject, fallback?: string | null): Row {
+	function row(project: Listed): Row {
 		const parts = projectParts(project.key);
 		const repo = 'repo' in project ? project.repo : undefined;
+		// a repo that is not a project yet has the description the cache holds
+		const cached = 'unsaved' in project ? project.description : undefined;
 		return {
 			project,
 			parts,
 			name: parts.path,
-			description: repo?.description ?? fallback ?? undefined,
+			shortName: parts.name,
+			description: repo?.description ?? cached ?? undefined,
 			unreachable: repo?.reachable === false,
 			// only the first lookup shows a skeleton; after that the cached copy stands in
-			// the lower list already has GitHub's copy
-			pending: parts.host === 'github' && !repo && fallback === undefined,
+			pending: parts.host === 'github' && !repo && cached === undefined,
 			count: count(project)
 		};
 	}
 
-	const byKey = $derived(new Map(projects.map((project) => [project.key, project])));
-
-	/**
-	 * Repos given a skill from the lower list during this visit. They become
-	 * projects straight away, but stay down there until the next visit rather
-	 * than jumping up the page under the open menu.
-	 */
-	const adopted = new SvelteSet<string>();
-
-	const rows = $derived(
-		projects.filter((project) => !adopted.has(project.key)).map((project) => row(project))
-	);
-
-	/** The app's repos that are not projects yet, most recently pushed first. */
-	function otherRows(repos: Awaited<typeof data.repos>) {
-		return repos.flatMap((repo) => {
-			const key = `github.com/${repo.fullName.toLowerCase()}`;
-			const project = byKey.get(key);
-			if (project && !adopted.has(key)) return [];
-			return [row(project ?? { _id: key, key, unsaved: true }, repo.description)];
-		});
-	}
+	// sorted by key, so a repo stays put when a skill makes it a project
+	const rows = $derived(repos.merge(projects).map(row));
 
 	let query = $state('');
+
+	/** A search may be for a repo newer than the cache, so it looks GitHub over again. */
+	function onSearch(value: string) {
+		query = value;
+		repos.search(value);
+	}
+
 	const queryTerms = $derived(terms(query));
 	const results = $derived(search(rows, query));
 </script>
 
-{#snippet marked(text: string)}
-	<!-- one line: whitespace between segments would render as stray spaces -->
-	{#each highlight(text, queryTerms) as segment, i (i)}{#if segment.match}<mark
-				class="bg-primary/20 text-foreground">{segment.text}</mark
-			>{:else}{segment.text}{/if}{/each}
-{/snippet}
-
-{#snippet item({ project, parts, description, unreachable, pending, count }: Row, other = false)}
+{#snippet item({ project, parts, description, unreachable, pending, count }: Row)}
 	{@const unsaved = 'unsaved' in project && project.unsaved === true}
 	<li class="relative flex items-center justify-between gap-4 py-3.5">
 		<!-- a repo with no project yet has no page to open -->
@@ -114,7 +104,7 @@
 			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 				<span class="flex min-w-0 items-center gap-2">
 					<span class="truncate text-sm font-semibold text-card-foreground" title={project.key}>
-						{@render marked(parts.path)}
+						<Highlighted text={parts.path} terms={queryTerms} />
 					</span>
 					<span class="shrink-0 text-xs text-muted-foreground">
 						{count}
@@ -125,7 +115,7 @@
 				<!-- one line at a reading width, like skill descriptions -->
 				{#if description}
 					<span class="max-w-2xl truncate text-[13px] text-muted-foreground">
-						{@render marked(around(description, queryTerms))}
+						<Highlighted text={around(description, queryTerms)} terms={queryTerms} />
 					</span>
 				{:else if pending}
 					<Skeleton class="my-0.5 h-3.5 w-2/3" />
@@ -140,12 +130,7 @@
 		</svelte:element>
 
 		<div class="relative shrink-0">
-			<ProjectMenu
-				{project}
-				{skills}
-				{actions}
-				onBind={other ? () => adopted.add(project.key) : undefined}
-			/>
+			<ProjectMenu {project} {skills} {actions} />
 		</div>
 	</li>
 {/snippet}
@@ -158,21 +143,12 @@
 
 <svelte:head><title>Projects · {APP_NAME}</title></svelte:head>
 
-<div class="relative mt-4 mb-2">
-	<RiSearchLine
-		class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-		aria-hidden="true"
-	/>
-	<Input
-		type="search"
-		placeholder="Search projects"
-		aria-label="Search projects"
-		autocomplete="off"
-		spellcheck="false"
-		class="pl-8"
-		bind:value={query}
-	/>
-</div>
+<SearchInput
+	placeholder="Search projects"
+	aria-label="Search projects"
+	class="mt-4 mb-2"
+	bind:value={() => query, onSearch}
+/>
 
 {#if unreachable.length > 0}
 	<p class="mb-2 rounded-md border border-border px-3 py-2.5 text-[13px] text-muted-foreground">
@@ -188,56 +164,34 @@
 	</p>
 {/if}
 
-<!-- nothing above the first row to clear, so it sits closer to the search -->
-<ul class="divide-y divide-border [&>li:first-child]:pt-2">
-	{#each results as result (result.project.key)}
-		{@render item(result)}
-	{/each}
-</ul>
+{#if rows.length === 0 && !repos.syncing}
+	<div class="flex flex-col items-center justify-center gap-2 px-8 py-24 text-center">
+		<p class="text-sm text-card-foreground">No projects yet</p>
+		<p class="text-sm text-muted-foreground">
+			Run <code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> inside a repo to add
+			it here.
+		</p>
+	</div>
+{:else if results.length === 0 && !repos.syncing}
+	{@render noMatch()}
+{:else}
+	<!-- nothing above the first row to clear, so it sits closer to the search -->
+	<ul class="divide-y divide-border [&>li:first-child]:pt-2">
+		{#each results as result (result.project.key)}
+			{@render item(result)}
+		{/each}
 
-{#await data.repos}
-	{#if !query.trim()}
-		<section class="mt-8 mb-8" aria-busy="true">
-			<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-				Other repos
-			</h2>
-			<ul class="divide-y divide-border">
-				{#each [0, 1, 2] as i (i)}
-					<li class="flex items-start gap-3 py-3.5">
-						<Skeleton class="mt-0.5 size-8 shrink-0 rounded-full" />
-						<div class="flex flex-1 flex-col gap-2.5 pt-0.5">
-							<Skeleton class="h-3.5 w-1/3" />
-							<Skeleton class="h-3.5 w-2/3" />
-						</div>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-{:then repos}
-	{@const others = otherRows(repos)}
-	{@const otherResults = search(others, query)}
-
-	{#if projects.length === 0 && others.length === 0}
-		<div class="flex flex-col items-center justify-center gap-2 px-8 py-24 text-center">
-			<p class="text-sm text-card-foreground">No projects yet</p>
-			<p class="text-sm text-muted-foreground">
-				Run <code class="font-mono text-foreground">skilless add &lt;skill&gt;</code> inside a repo to
-				add it here.
-			</p>
-		</div>
-	{:else if results.length === 0 && otherResults.length === 0}
-		{@render noMatch()}
-	{:else if otherResults.length > 0}
-		<section class="mt-8 mb-8">
-			<h2 class="border-b border-border pb-2 text-xs font-medium text-muted-foreground">
-				Other repos
-			</h2>
-			<ul class="divide-y divide-border">
-				{#each otherResults as result (result.project.key)}
-					{@render item(result, true)}
-				{/each}
-			</ul>
-		</section>
-	{/if}
-{/await}
+		<!-- the first lookup, or a search looking GitHub over for a newer repo -->
+		{#if repos.syncing}
+			{#each rows.length === 0 ? [0, 1, 2] : [0] as i (i)}
+				<li class="flex items-start gap-3 py-3.5" aria-busy="true">
+					<Skeleton class="mt-0.5 size-8 shrink-0 rounded-full" />
+					<div class="flex flex-1 flex-col gap-2.5 pt-0.5">
+						<Skeleton class="h-3.5 w-1/3" />
+						<Skeleton class="h-3.5 w-2/3" />
+					</div>
+				</li>
+			{/each}
+		{/if}
+	</ul>
+{/if}

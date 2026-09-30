@@ -5,21 +5,18 @@ import { convexLoad } from 'convex-svelte/sveltekit';
 // here without a reload. GitHub descriptions are cached on each project and
 // refreshed in the background when stale; the live list picks the result up.
 export async function load({ locals }) {
-	const [skills, projects, installUrl] = await Promise.all([
+	const [skills, projects, installUrl, repos] = await Promise.all([
 		convexLoad(api.skills.list, {}),
 		convexLoad(api.projects.list, {}),
 		locals.convex.query(api.github.installLink, {}),
-		// only queues the lookup, so this never waits on GitHub
-		locals.convex.mutation(api.github.refreshStale, {}).catch(() => {})
+		// Every repo the GitHub app can see, cached, for the ones without skills
+		// yet. The page subscribes to it itself; this just seeds the first render.
+		locals.convex.query(api.github.cachedRepos, {}).catch(() => undefined),
+		// these only queue lookups, so this never waits on GitHub. The repo list
+		// is filled the first time only; after that a search looks again.
+		locals.convex.mutation(api.github.refreshStale, {}).catch(() => {}),
+		locals.convex.mutation(api.github.syncRepos, { force: false }).catch(() => {})
 	]);
-
-	// Every repo the GitHub app can see, for the ones without skills yet. Streamed,
-	// so the list renders without waiting on GitHub; empty when signed in some
-	// other way or the lookup fails.
-	const repos = locals.convex
-		.action(api.github.repos, {})
-		.then(({ repos }) => repos)
-		.catch(() => []);
 
 	return { skills, projects, installUrl, repos };
 }

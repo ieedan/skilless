@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { around, highlight } from '$lib/search';
+	import { around } from '$lib/search';
 	import type { MenuProject, MenuSkill, SkillActions } from '$lib/skill-actions.svelte';
 	import { sourceParts, type SkillSource } from '$lib/source';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
 	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import GithubLogo from './github-logo.svelte';
 	import GitlabLogo from './gitlab-logo.svelte';
+	import Highlighted from './highlighted.svelte';
 	import SkillMenu from './skill-menu.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 
@@ -43,13 +44,6 @@
 	const count = $derived(projects.filter((p) => actions.isBound(skill, p)).length);
 </script>
 
-{#snippet marked(text: string)}
-	<!-- one line: whitespace between segments would render as stray spaces -->
-	{#each highlight(text, terms) as segment, i (i)}{#if segment.match}<mark
-				class="bg-primary/20 text-foreground">{segment.text}</mark
-			>{:else}{segment.text}{/if}{/each}
-{/snippet}
-
 <li class="group/row relative flex items-center justify-between gap-4 py-3.5">
 	<div class="flex min-w-0 items-center gap-2.5">
 		{#if selected !== undefined}
@@ -73,7 +67,7 @@
 				<a {href} class="truncate font-mono text-sm font-semibold text-card-foreground">
 					<!-- stretched so the whole row is the hit target, without nesting the menu or the repo link inside it -->
 					<span class="absolute inset-0" aria-hidden="true"></span>
-					{@render marked(skill.name)}
+					<Highlighted text={skill.name} {terms} />
 				</a>
 				{#if global}
 					<span class="inline-flex shrink-0" title="Installed globally">
@@ -113,7 +107,7 @@
 			<!-- one line at a reading width; the skill's page has the rest -->
 			<span class="max-w-2xl truncate text-[13px] text-muted-foreground">
 				{#if skill.description}
-					{@render marked(around(skill.description, terms))}
+					<Highlighted text={around(skill.description, terms)} {terms} />
 				{:else}
 					No description
 				{/if}
