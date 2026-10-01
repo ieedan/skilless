@@ -235,43 +235,6 @@ export const added = query({
 	}
 });
 
-/**
- * Forgets sources that point a skill at itself, from before copying your own
- * skill was refused. Safe to run again: `npx convex run skills:dropSelfSources`.
- */
-export const dropSelfSources = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ dropped: number }> => {
-		let dropped = 0;
-		for (const skill of await ctx.db.query('skills').collect()) {
-			const address = skill.source ? model.parseAddress(skill.source.url) : null;
-			if (address?.kind !== 'skill' || address.name !== skill.name) continue;
-			if ((await model.usernameOf(ctx, skill.userId)) !== address.username) continue;
-			await ctx.db.patch(skill._id, { source: undefined });
-			dropped++;
-		}
-		return { dropped };
-	}
-});
-
-/**
- * Makes private every public skill that was copied from somewhere else, from
- * before only originals could be public. Safe to run again:
- * `npx convex run skills:privatizeDerived`.
- */
-export const privatizeDerived = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<{ made: number }> => {
-		let made = 0;
-		for (const skill of await ctx.db.query('skills').collect()) {
-			if (!skill.public || !skill.source) continue;
-			await ctx.db.patch(skill._id, { public: false });
-			made++;
-		}
-		return { made };
-	}
-});
-
 /** Drops objects a failed write uploaded but never committed. */
 export const discard = internalMutation({
 	args: { keys: v.array(v.string()) },

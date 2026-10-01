@@ -4,6 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { normalize } from 'pathe';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { addressOf, packFile, probe } from '@/utils/address';
 import { isPackFile, PackLoopError, readPackFile, resolvePack } from '@/utils/pack';
@@ -186,7 +187,7 @@ describe('resolvePack', () => {
 		expect(alpha.source).toMatchObject({
 			url: `file://${repo}`,
 			path: 'skills/alpha',
-			pack: { url: packFile, name: 'Mine' }
+			pack: { url: normalize(packFile), name: 'Mine' }
 		});
 
 		const gamma = skills.find((r) => r.skill.name === 'gamma')!;
