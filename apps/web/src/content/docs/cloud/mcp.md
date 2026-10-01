@@ -86,10 +86,15 @@ Treat the token like a password: anyone with it can read and change your library
 | `get_project_skills`        | Lists the skills a project gets, including your global skills.         |
 | `add_skill_to_project`      | Adds a skill to a project.                                             |
 | `remove_skill_from_project` | Removes a skill from a project without deleting it.                    |
+| `list_packs`                | Lists your [packs](/docs/packs), with the URL to add each with.        |
+| `get_pack`                  | Reads a pack, with the skills each entry resolves to.                  |
+| `create_pack`               | Creates a pack, optionally with entries in it.                         |
+| `update_pack`               | Adds or removes a pack's entries, or makes it public or private.       |
+| `delete_pack`               | Deletes a pack. Skills already added from it stay.                     |
 
 Projects are named by their git remote, like `github.com/ieedan/skilless`, the same way the CLI names them.
 
-Changes made over MCP land in your cloud library. To get them on a machine, run `skilless sync` there, or `skilless install` in a cloud agent. If an agent deletes something you wanted, you can restore it from the trash on [skilless.dev](/skills) for 30 days.
+Changes made over MCP land in your cloud library. To get them on a machine, run `skilless sync` there, or `skilless install` in a cloud agent. If an agent deletes something you wanted, you can restore it from the trash on [skilless.dev](/my-skills) for 30 days.
 
 ## Revoke access
 

@@ -8,7 +8,7 @@
 
 	let error = $state<string | null>(null);
 
-	const redirectTo = $derived(page.url.searchParams.get('redirectTo') ?? '/skills');
+	const redirectTo = $derived(page.url.searchParams.get('redirectTo') ?? '/my-skills');
 
 	async function signIn() {
 		error = null;

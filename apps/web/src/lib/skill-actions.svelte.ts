@@ -8,6 +8,9 @@ export type MenuSkill = {
 	name: string;
 	soleFile?: string;
 	global?: boolean;
+	/** The skill's address, `/skills/<uuid>`. Absent only on rows from before addresses. */
+	uuid?: string;
+	public?: boolean;
 	projectIds: string[];
 };
 
@@ -31,11 +34,13 @@ const CATCH_UP_MS = 5000;
  * would flash the old value until the push lands. It goes once the server
  * agrees, or after `CATCH_UP_MS`.
  */
-class Optimistic {
+export class Optimistic {
 	#values = $state<Record<string, boolean>>({});
 	/** Latest request per key, so an older one settling does not clear a newer value. */
 	#requests: Record<string, number> = {};
 	/** Keys whose latest request has settled, and now only wait on the push. */
+	// only read inside `read` and `run`, never rendered: nothing to react to
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	#settled = new Set<string>();
 
 	read(key: string, server: boolean) {
@@ -76,7 +81,7 @@ class Optimistic {
 
 /**
  * What the skill menu does, shared by the skills list and a skill's own page.
- * The actions live on /skills, so they are posted there by absolute path.
+ * The actions live on /my-skills, so they are posted there by absolute path.
  *
  * Holds the optimistic state for binding and global toggles, so a checkbox
  * moves on click rather than a round trip later, and snaps back on failure.
@@ -88,6 +93,8 @@ export class SkillActions {
 	#bindings = new Optimistic();
 	/** Keyed by skill id. */
 	#globals = new Optimistic();
+	/** Keyed by skill id. */
+	#publics = new Optimistic();
 
 	/** Every page using this is fed by live `convexLoad` queries, so there is nothing to invalidate. */
 	#options = { keepFocus: true, invalidate: false };
@@ -106,7 +113,7 @@ export class SkillActions {
 	setBinding(skill: MenuSkill, project: MenuProject, bound: boolean) {
 		return this.#bindings.run(`${skill._id}:${project._id}`, bound, async () => {
 			const result = await submitAction(
-				'/skills?/setBinding',
+				'/my-skills?/setBinding',
 				{
 					skillId: skill._id,
 					...(project.unsaved ? { projectKey: project.key } : { projectId: project._id }),
@@ -123,7 +130,7 @@ export class SkillActions {
 	setGlobal(skill: MenuSkill, global: boolean) {
 		return this.#globals.run(skill._id, global, async () => {
 			const result = await submitAction(
-				'/skills?/setGlobal',
+				'/my-skills?/setGlobal',
 				{ name: skill.name, global: String(global) },
 				this.#options
 			).catch(() => null);
@@ -131,6 +138,37 @@ export class SkillActions {
 			toast.error(`Could not update ${skill.name}`);
 			return false;
 		});
+	}
+
+	isPublic(skill: MenuSkill) {
+		return this.#publics.read(skill._id, skill.public === true);
+	}
+
+	setPublic(skill: MenuSkill, value: boolean) {
+		return this.#publics.run(skill._id, value, async () => {
+			const result = await submitAction(
+				'/my-skills?/setPublic',
+				{ name: skill.name, public: String(value) },
+				this.#options
+			).catch(() => null);
+			if (result?.type === 'success') {
+				toast.success(value ? `Anyone can now see ${skill.name}` : `${skill.name} is private`);
+				return true;
+			}
+			toast.error(`Could not update ${skill.name}`);
+			return false;
+		});
+	}
+
+	/** Its address, which works for anyone once it is public and only for you until then. */
+	async copyLink(skill: MenuSkill) {
+		if (!skill.uuid) return;
+		const link = `${location.origin}/skills/${skill.uuid}`;
+		if ((await copyText(link)) === 'success') {
+			toast.success(this.isPublic(skill) ? 'Copied link' : 'Copied link, only you can open it');
+		} else {
+			toast.error('Could not copy to the clipboard');
+		}
 	}
 
 	copyInstall(skill: MenuSkill) {
@@ -158,7 +196,9 @@ export class SkillActions {
 			onConfirm: async () => {
 				const results = await Promise.all(
 					skills.map((skill) =>
-						submitAction('/skills?/remove', { name: skill.name }, this.#options).catch(() => null)
+						submitAction('/my-skills?/remove', { name: skill.name }, this.#options).catch(
+							() => null
+						)
 					)
 				);
 				const failed = results.filter((result) => result?.type !== 'success').length;
@@ -173,7 +213,11 @@ export class SkillActions {
 			title: `Delete ${skill.name}?`,
 			description: 'This removes it from every project. It cannot be undone from here.',
 			onConfirm: async () => {
-				const result = await submitAction('/skills?/remove', { name: skill.name }, this.#options);
+				const result = await submitAction(
+					'/my-skills?/remove',
+					{ name: skill.name },
+					this.#options
+				);
 				if (result.type === 'success') await onRemoved?.();
 			}
 		});

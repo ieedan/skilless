@@ -11,6 +11,7 @@
 		"dev:cli": "pnpm -F skilless dev",
 		"build": "pnpm -r build",
 		"build:cli": "pnpm -F skilless build",
+		"cli": "SKILLESS_HOME=$HOME/.skilless-dev SKILLESS_API_URL=http://localhost:5173 node ./packages/skilless/dist/bin.mjs",
 		"vercel:deploy": "pnpm -F @skilless/platform deploy:preview",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && eslint .",

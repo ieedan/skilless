@@ -1,15 +1,20 @@
 import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { api as convex } from '@skilless/platform';
 import { fetchFiles, type SecretClient } from '@skilless/platform/client';
+import { ConvexError } from 'convex/values';
 import { authenticate } from './auth';
+import { toPack } from './packs';
 import { toSkill, validateFiles } from './skills';
+import { supportsBinary, updateMessage, withBinary } from './clients';
 
 type Variables = { userId: string; convex: SecretClient };
 
 const FileSchema = z
 	.object({
 		path: z.string().min(1),
-		contents: z.string()
+		/** Text as is, or a binary file's bytes as base64 when `encoding` says so. */
+		contents: z.string(),
+		encoding: z.literal('base64').optional()
 	})
 	.openapi('SkillFile');
 
@@ -20,7 +25,9 @@ const SourceSchema = z
 		/** The skill's directory inside the repo. Empty for the repo root. */
 		path: z.string(),
 		/** The upstream contentHash as of the last add or update. */
-		hash: z.string()
+		hash: z.string(),
+		/** The pack that last added it, shown as where it came from. */
+		pack: z.object({ url: z.string(), name: z.string().optional() }).optional()
 	})
 	.openapi('SkillSource');
 
@@ -33,9 +40,27 @@ const SkillSchema = z
 		/** Global skills are returned for every project, bound or not. */
 		global: z.boolean(),
 		/** The git repository this skill was copied from, when it was. */
-		source: SourceSchema.nullable()
+		source: SourceSchema.nullable(),
+		/** Its address is `/skills/<id>`. Null only for a skill from before addresses. */
+		id: z.string().nullable()
 	})
 	.openapi('Skill');
+
+const PackSchema = z
+	.object({
+		id: z.string(),
+		name: z.string(),
+		description: z.string().nullable(),
+		public: z.boolean(),
+		/** Its entries, as its JSON lists them. */
+		skills: z.array(z.string()),
+		/** How many skills it brings; at least this many while `countPartial`. */
+		skillCount: z.number(),
+		countPartial: z.boolean(),
+		/** What `skilless add` takes. */
+		url: z.string()
+	})
+	.openapi('Pack');
 
 const SkillWithFilesSchema = SkillSchema.extend({
 	files: z.array(FileSchema)
@@ -111,6 +136,10 @@ app.openapi(
 			200: {
 				content: { 'application/json': { schema: SkillWithFilesSchema.nullable() } },
 				description: 'The skill, or null when you have none by that name.'
+			},
+			426: {
+				content: { 'application/json': { schema: ErrorSchema } },
+				description: 'The skill has binary files and the client did not say it can handle them.'
 			}
 		}
 	}),
@@ -121,6 +150,11 @@ app.openapi(
 		});
 
 		if (!found) return c.json(null, 200);
+
+		const binary = withBinary([{ name: found.skill.name, files: found.files }]);
+		if (binary.length > 0 && !supportsBinary(c.req.raw.headers)) {
+			return c.json({ error: 'upgrade_required', message: updateMessage(binary) }, 426);
+		}
 
 		return c.json({ ...toSkill(found.skill), files: await fetchFiles(found.files) }, 200);
 	}
@@ -236,7 +270,7 @@ app.openapi(
 		method: 'put',
 		path: '/api/v1/skills/{name}/source',
 		tags: ['skills'],
-		summary: 'Record the git repository a skill came from, or forget it.',
+		summary: 'Record where a skill came from, or forget it.',
 		description:
 			'Kept apart from the skill content, so pushing an edit never clears it. Read by `skilless update`.',
 		request: {
@@ -282,6 +316,10 @@ app.openapi(
 			200: {
 				content: { 'application/json': { schema: z.array(SkillWithFilesSchema) } },
 				description: 'Everything added to that project.'
+			},
+			426: {
+				content: { 'application/json': { schema: ErrorSchema } },
+				description: 'A skill has binary files and the client did not say it can handle them.'
 			}
 		}
 	}),
@@ -296,6 +334,13 @@ app.openapi(
 			userId: c.get('userId'),
 			names: bound.map((skill) => skill.name)
 		});
+
+		const binary = withBinary(
+			found.flatMap((entry) => (entry ? [{ name: entry.skill.name, files: entry.files }] : []))
+		);
+		if (binary.length > 0 && !supportsBinary(c.req.raw.headers)) {
+			return c.json({ error: 'upgrade_required', message: updateMessage(binary) }, 426);
+		}
 
 		const skills = await Promise.all(
 			found.flatMap((entry) =>
@@ -349,6 +394,139 @@ app.openapi(
 		});
 
 		return c.json(result, 200);
+	}
+);
+
+/* ------------------------------------------------------------------ packs */
+
+/** The reasons Convex refuses a pack change, as the API's errors. */
+function packError(
+	error: unknown
+): { status: 400 | 404; body: { error: string; message: string } } | null {
+	const data =
+		error instanceof ConvexError ? (error.data as { code?: string; message?: string }) : null;
+	if (data?.code === 'INVALID_PACK') {
+		return {
+			status: 400,
+			body: { error: 'invalid_pack', message: String(data.message).replace(/^Invalid pack: /, '') }
+		};
+	}
+	if (data?.code === 'PACK_NOT_FOUND') {
+		return { status: 404, body: { error: 'not_found', message: 'You have no pack with that id.' } };
+	}
+	return null;
+}
+
+app.openapi(
+	createRoute({
+		method: 'get',
+		path: '/api/v1/packs',
+		tags: ['packs'],
+		summary: 'List your packs.',
+		responses: {
+			200: {
+				content: { 'application/json': { schema: z.array(PackSchema) } },
+				description: 'Your packs.'
+			}
+		}
+	}),
+	async (c) => {
+		const packs = await c.get('convex').query(convex.packs.listFor, { userId: c.get('userId') });
+		const origin = new URL(c.req.url).origin;
+		return c.json(
+			packs.map((pack) => toPack(pack, origin)),
+			200
+		);
+	}
+);
+
+app.openapi(
+	createRoute({
+		method: 'post',
+		path: '/api/v1/packs',
+		tags: ['packs'],
+		summary: 'Create a pack.',
+		description:
+			'Entries are what a pack file lists: `github.com/owner/repo[/path][#ref]`, or a skill address like `https://skilless.dev/skills/<id>`. New packs are private unless `public` is set.',
+		request: {
+			body: {
+				content: {
+					'application/json': {
+						schema: z.object({
+							name: z.string(),
+							description: z.string().optional(),
+							skills: z.array(z.string()).optional(),
+							public: z.boolean().optional()
+						})
+					}
+				}
+			}
+		},
+		responses: {
+			200: {
+				content: { 'application/json': { schema: PackSchema } },
+				description: 'The new pack.'
+			},
+			400: {
+				content: { 'application/json': { schema: ErrorSchema } },
+				description: 'The pack was rejected.'
+			}
+		}
+	}),
+	async (c) => {
+		const body = c.req.valid('json');
+		const userId = c.get('userId');
+		try {
+			const uuid = await c.get('convex').mutation(convex.packs.createPackFor, {
+				userId,
+				name: body.name,
+				description: body.description ?? '',
+				skills: body.skills,
+				public: body.public
+			});
+			const packs = await c.get('convex').query(convex.packs.listFor, { userId });
+			const pack = packs.find((p) => p.uuid === uuid)!;
+			return c.json(toPack(pack, new URL(c.req.url).origin), 200);
+		} catch (error) {
+			const refused = packError(error);
+			if (refused?.status === 400) return c.json(refused.body, 400);
+			throw error;
+		}
+	}
+);
+
+app.openapi(
+	createRoute({
+		method: 'delete',
+		path: '/api/v1/packs/{id}',
+		tags: ['packs'],
+		summary: 'Delete one of your packs.',
+		description:
+			'Skills already added from it stay where they are; they just stop getting updates from it.',
+		request: { params: z.object({ id: z.string() }) },
+		responses: {
+			200: {
+				content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+				description: 'Deleted.'
+			},
+			404: {
+				content: { 'application/json': { schema: ErrorSchema } },
+				description: 'No such pack of yours.'
+			}
+		}
+	}),
+	async (c) => {
+		try {
+			await c.get('convex').mutation(convex.packs.removeFor, {
+				userId: c.get('userId'),
+				uuid: c.req.valid('param').id
+			});
+			return c.json({ ok: true }, 200);
+		} catch (error) {
+			const refused = packError(error);
+			if (refused?.status === 404) return c.json(refused.body, 404);
+			throw error;
+		}
 	}
 );
 

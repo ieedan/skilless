@@ -16,13 +16,17 @@ export type GithubRepo = {
 	defaultBranch: string;
 	cloneUrl: string;
 	description: string | null;
+	fork: boolean;
 };
 
 /**
  * A user-to-server token for the GitHub App. It only reaches repos the app is
  * installed on, and better-auth refreshes it when it has expired.
  */
-async function githubToken(ctx: GenericActionCtx<DataModel>, userId: string): Promise<string> {
+export async function githubToken(
+	ctx: GenericActionCtx<DataModel>,
+	userId: string
+): Promise<string> {
 	try {
 		const { accessToken } = await createAuth(ctx).api.getAccessToken({
 			body: { providerId: 'github', userId }
@@ -54,6 +58,7 @@ type RawRepo = {
 	default_branch: string;
 	clone_url: string;
 	description: string | null;
+	fork: boolean;
 };
 
 /** Every repo the user can reach through an installation of the app. */
@@ -72,7 +77,8 @@ async function listRepos(token: string): Promise<GithubRepo[]> {
 				private: repo.private,
 				defaultBranch: repo.default_branch,
 				cloneUrl: repo.clone_url,
-				description: repo.description?.trim() || null
+				description: repo.description?.trim() || null,
+				fork: repo.fork
 			});
 		}
 		if (batch.length < 100) return repos;
@@ -249,13 +255,16 @@ export const cachedRepos = query({
 
 		return {
 			repos: repos
-				.map(({ key, description }) => ({ key, description }))
+				.map(({ key, description, hasSkills }) => ({ key, description, hasSkills }))
 				.sort((a, b) => a.key.localeCompare(b.key)),
 			syncedAt: sync?.syncedAt ?? null,
 			syncing: sync?.requestedAt !== undefined
 		};
 	}
 });
+
+/** Bumped whenever the way repos are marked as having skills changes, so caches look again once. */
+const SKILLS_VERSION = 2;
 
 /** How long a search waits after the last lookup before asking GitHub again. */
 const RESYNC_MS = 30 * 1000;
@@ -279,7 +288,15 @@ export const syncRepos = mutation({
 			.unique();
 
 		if (sync?.requestedAt !== undefined && now - sync.requestedAt < LOST_MS) return;
-		if (sync?.syncedAt !== undefined && (!args.force || now - sync.syncedAt < RESYNC_MS)) return;
+		// a cache from before skills were searched for looks again once, forced or not
+		const stale = sync?.skillsVersion !== SKILLS_VERSION;
+		if (
+			sync?.syncedAt !== undefined &&
+			!stale &&
+			(!args.force || now - sync.syncedAt < RESYNC_MS)
+		) {
+			return;
+		}
 
 		if (sync) await ctx.db.patch(sync._id, { requestedAt: now });
 		else await ctx.db.insert('repoSyncs', { userId, requestedAt: now });
@@ -292,20 +309,29 @@ export const fetchRepos = internalAction({
 	args: { userId: v.string() },
 	handler: async (ctx, args) => {
 		let repos: GithubRepo[] | null = null;
+		let token: string | null = null;
 		try {
-			repos = await listRepos(await githubToken(ctx, args.userId));
+			token = await githubToken(ctx, args.userId);
+			repos = await listRepos(token);
 		} catch {
 			// signed in some other way, or GitHub is having a moment. The cache stands.
 		}
 
+		const hasSkills = repos ? await markSkills(token, repos) : new Map<string, boolean>();
+
 		await ctx.runMutation(internal.github.saveRepoList, {
 			userId: args.userId,
 			repos:
-				repos?.map((repo) => ({
-					key: repoKey(repo.fullName),
-					description: repo.description,
-					private: repo.private
-				})) ?? null
+				repos?.map((repo) => {
+					const key = repoKey(repo.fullName);
+					const has = hasSkills.get(key);
+					return {
+						key,
+						description: repo.description,
+						private: repo.private,
+						...(has !== undefined ? { hasSkills: has } : {})
+					};
+				}) ?? null
 		});
 	}
 });
@@ -319,7 +345,8 @@ export const saveRepoList = internalMutation({
 				v.object({
 					key: v.string(),
 					description: v.union(v.string(), v.null()),
-					private: v.boolean()
+					private: v.boolean(),
+					hasSkills: v.optional(v.boolean())
 				})
 			),
 			v.null()
@@ -340,8 +367,16 @@ export const saveRepoList = internalMutation({
 				byKey.delete(repo.key);
 				if (!row) {
 					await ctx.db.insert('repos', { userId: args.userId, ...repo });
-				} else if (row.description !== repo.description || row.private !== repo.private) {
-					await ctx.db.patch(row._id, { description: repo.description, private: repo.private });
+				} else if (
+					row.description !== repo.description ||
+					row.private !== repo.private ||
+					row.hasSkills !== repo.hasSkills
+				) {
+					await ctx.db.patch(row._id, {
+						description: repo.description,
+						private: repo.private,
+						hasSkills: repo.hasSkills
+					});
 				}
 			}
 
@@ -357,8 +392,167 @@ export const saveRepoList = internalMutation({
 		// a failed first lookup still counts, so opening a picker does not retry it
 		// every time; a search will
 		const syncedAt = args.repos ? now : (sync?.syncedAt ?? now);
-		if (sync) await ctx.db.patch(sync._id, { syncedAt, requestedAt: undefined });
-		else await ctx.db.insert('repoSyncs', { userId: args.userId, syncedAt });
+		// only caches marked an older way need the extra look, so a failed one counts too
+		const skillsVersion = SKILLS_VERSION;
+		if (sync) await ctx.db.patch(sync._id, { syncedAt, requestedAt: undefined, skillsVersion });
+		else await ctx.db.insert('repoSyncs', { userId: args.userId, syncedAt, skillsVersion });
+	}
+});
+
+export type OwnerRepos = {
+	/** `hasSkills` is absent where GitHub could not say, past the lookup's limits or a rate limit. */
+	repos: { key: string; description: string | null; hasSkills?: boolean }[];
+};
+
+const githubHeaders = (auth: string | null) => ({
+	...(auth ? { Authorization: `Bearer ${auth}` } : {}),
+	Accept: 'application/vnd.github+json',
+	'User-Agent': 'skilless',
+	'X-GitHub-Api-Version': '2022-11-28'
+});
+
+/** Most owners searched in one lookup of your repos; code search allows 10 requests a minute. */
+const MAX_SEARCHED_OWNERS = 5;
+
+/** Most code search pages read for one owner; past this, search is no help. */
+const SEARCH_PAGES = 3;
+
+/** Most repos whose tree is read for a SKILL.md in one lookup: forks, and owners search could not cover. */
+const MAX_TREE_CHECKS = 60;
+const TREE_CONCURRENCY = 10;
+
+/** Whether the repo's default branch has a SKILL.md anywhere; undefined if it could not be read. */
+async function treeHasSkills(token: string | null, fullName: string): Promise<boolean | undefined> {
+	for (const auth of token ? [token, null] : [null]) {
+		const response = await fetch(
+			`https://api.github.com/repos/${fullName}/git/trees/HEAD?recursive=1`,
+			{ headers: githubHeaders(auth) }
+		).catch(() => null);
+		if (response?.status === 409) return false; // an empty repo
+		if (!response?.ok) continue;
+		const tree = (await response.json()) as { tree: { path: string; type: string }[] };
+		return tree.tree.some(
+			(entry) =>
+				entry.type === 'blob' && (entry.path === 'SKILL.md' || entry.path.endsWith('/SKILL.md'))
+		);
+	}
+	return undefined;
+}
+
+/**
+ * Which repos have skills, decided before any list shows them so none has to
+ * vanish from under the cursor later. One code search per owner covers most;
+ * search skips forks, so those (and owners search could not cover) have their
+ * tree read instead, up to a limit.
+ */
+async function markSkills(
+	token: string | null,
+	repos: { fullName: string; fork: boolean }[]
+): Promise<Map<string, boolean>> {
+	const marks = new Map<string, boolean>();
+	const ownerOf = (fullName: string) => fullName.split('/')[0]!.toLowerCase();
+
+	const owners = [...new Set(repos.filter((repo) => !repo.fork).map((r) => ownerOf(r.fullName)))];
+	const searched = new Map<string, Set<string>>();
+	for (const owner of owners.slice(0, MAX_SEARCHED_OWNERS)) {
+		const found = await reposWithSkills(token, owner);
+		if (found) searched.set(owner, new Set(found));
+	}
+
+	const unknown: string[] = [];
+	for (const repo of repos) {
+		const found = repo.fork ? undefined : searched.get(ownerOf(repo.fullName));
+		if (found) marks.set(repoKey(repo.fullName), found.has(repoKey(repo.fullName)));
+		else unknown.push(repo.fullName);
+	}
+
+	const checks = unknown.slice(0, MAX_TREE_CHECKS);
+	for (let i = 0; i < checks.length; i += TREE_CONCURRENCY) {
+		await Promise.all(
+			checks.slice(i, i + TREE_CONCURRENCY).map(async (fullName) => {
+				const has = await treeHasSkills(token, fullName);
+				if (has !== undefined) marks.set(repoKey(fullName), has);
+			})
+		);
+	}
+
+	return marks;
+}
+
+/** Every repo of the owner with a SKILL.md, by code search, which needs a token. */
+async function reposWithSkills(token: string | null, owner: string): Promise<string[] | null> {
+	if (!token) return null;
+	const found = new Set<string>();
+
+	for (let page = 1; page <= SEARCH_PAGES; page++) {
+		const q = encodeURIComponent(`filename:SKILL.md user:${owner}`);
+		const response = await fetch(
+			`https://api.github.com/search/code?q=${q}&per_page=100&page=${page}`,
+			{ headers: githubHeaders(token) }
+		).catch(() => null);
+		if (!response?.ok) return null;
+
+		const result = (await response.json()) as {
+			total_count: number;
+			incomplete_results: boolean;
+			items: { repository: { full_name: string } }[];
+		};
+		if (result.incomplete_results) return null;
+		for (const item of result.items) found.add(repoKey(item.repository.full_name));
+		if (page * 100 >= result.total_count) return [...found];
+	}
+	return null;
+}
+
+/**
+ * Someone's public repos, most recently pushed first, for the pickers to list
+ * when `owner/` is typed, with which ones search finds skills in so the rest
+ * need not be scanned one by one. One page: past that, typing more of the name
+ * finds it.
+ */
+export const ownerRepos = action({
+	args: { owner: v.string() },
+	handler: async (ctx, args): Promise<OwnerRepos> => {
+		const userId = await requireUser(ctx);
+		const owner = args.owner.trim();
+		const none: OwnerRepos = { repos: [] };
+		if (!/^[a-z\d](?:[a-z\d-]{0,38})$/i.test(owner)) return none;
+
+		let token: string | null = null;
+		try {
+			token = await githubToken(ctx, userId);
+		} catch {
+			// anonymous still lists repos, just with a lower rate limit and no search
+		}
+
+		const list = async () => {
+			for (const auth of token ? [token, null] : [null]) {
+				const response = await fetch(
+					`https://api.github.com/users/${owner}/repos?per_page=100&sort=pushed&type=owner`,
+					{ headers: githubHeaders(auth) }
+				).catch(() => null);
+				if (response?.status === 404) return [];
+				if (response?.ok) return (await response.json()) as (RawRepo & { fork: boolean })[];
+			}
+			return [];
+		};
+
+		const repos = (await list()).filter((repo) => !repo.private);
+		const hasSkills = await markSkills(
+			token,
+			repos.map((repo) => ({ fullName: repo.full_name, fork: repo.fork }))
+		);
+		return {
+			repos: repos.map((repo) => {
+				const key = repoKey(repo.full_name);
+				const has = hasSkills.get(key);
+				return {
+					key,
+					description: repo.description?.trim() || null,
+					...(has !== undefined ? { hasSkills: has } : {})
+				};
+			})
+		};
 	}
 });
 

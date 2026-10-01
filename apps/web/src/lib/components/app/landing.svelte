@@ -118,7 +118,7 @@
 		<nav class="flex items-center gap-3">
 			<Button href="/docs" variant="ghost">Docs</Button>
 			{#if signedIn}
-				<Button href="/skills">Dashboard</Button>
+				<Button href="/my-skills">Dashboard</Button>
 			{:else}
 				<Button href="/login">Sign Up</Button>
 				<Button href="/login" variant="outline">Login</Button>
@@ -293,7 +293,7 @@
 					</p>
 					<div class="flex flex-wrap gap-3">
 						{#if signedIn}
-							<Button href="/skills" size="lg">Open your library</Button>
+							<Button href="/my-skills" size="lg">Open your library</Button>
 						{:else}
 							<Button href="/login" size="lg">Create an account</Button>
 						{/if}

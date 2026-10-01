@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 
-export type SkillFile = { path: string; contents: string };
+/** Text as is, or a binary file's bytes as base64. */
+export type SkillFile = { path: string; contents: string; encoding?: 'base64' };
+
+/** A file's size in bytes, whichever way it travels. */
+export function byteLength(file: SkillFile): number {
+	return Buffer.byteLength(file.contents, file.encoding === 'base64' ? 'base64' : 'utf8');
+}
 
 const NUL = String.fromCharCode(0);
 

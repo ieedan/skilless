@@ -28,7 +28,7 @@ export async function GET({ locals, url }) {
 /** Only same-site paths, so neither query string can bounce the user off-site. */
 function safePath(path: string | null): string {
 	if (!path || !path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\')) {
-		return '/skills';
+		return '/my-skills';
 	}
 	return path;
 }

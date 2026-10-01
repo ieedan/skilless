@@ -1,11 +1,22 @@
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
+import { authComponent } from './auth';
 import { convexError, createConvexError } from './errors';
 import { parse } from 'yaml';
-import { r2 } from './r2';
+import { r2, toLinks, type FileLink } from './r2';
+import { skillsAt } from './discover';
 
-export type SkillFile = { path: string; contents: string };
+/**
+ * A file as it travels: text as is, or a binary file's bytes as base64. Stored
+ * and hashed as bytes either way, so a text file hashes as it always has.
+ */
+export type SkillFile = { path: string; contents: string; encoding?: 'base64' };
+
+/** A file's bytes, whichever way it travels. */
+export function bytesOf(file: SkillFile): Buffer {
+	return Buffer.from(file.contents, file.encoding === 'base64' ? 'base64' : 'utf8');
+}
 
 /** Project keys GitHub can describe (see `github.refresh`). */
 export const isGithubKey = (key: string) => key.startsWith('github.com/');
@@ -93,7 +104,7 @@ function toConvexValue(value: unknown): unknown {
  * by every write, which always has the whole file set in hand.
  */
 export function summarize(files: SkillFile[]): Frontmatter & { soleFile?: string } {
-	const main = files.find((file) => file.path === 'SKILL.md');
+	const main = files.find((file) => file.path === 'SKILL.md' && file.encoding !== 'base64');
 	return {
 		...(main ? parseFrontmatter(main.contents) : {}),
 		soleFile: files.length === 1 ? files[0].path : undefined
@@ -160,8 +171,516 @@ export async function setSource(
 	await ctx.db.patch(skill._id, { source: source ?? undefined });
 }
 
+export async function setPublic(
+	ctx: MutationCtx,
+	userId: string,
+	name: string,
+	value: boolean
+): Promise<void> {
+	const skill = await findSkill(ctx, userId, name);
+	if (!skill) throw createConvexError(convexError.SkillNotFound());
+
+	await ctx.db.patch(skill._id, { public: value, uuid: skill.uuid ?? crypto.randomUUID() });
+}
+
+/* -------------------------------------------------------------- addresses */
+
+/** Matches a UUID, as every skill and pack address ends in one. */
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/**
+ * The skill a pack entry points at, when it is a `…/skills/<uuid>` address
+ * rather than a repository. Any host: it is the UUID that names the skill.
+ */
+export function skillUuidOf(entry: string): string | null {
+	return new RegExp(`/skills/(${UUID})/?$`, 'i').exec(entry.trim())?.[1]?.toLowerCase() ?? null;
+}
+
+export function isUuid(value: string): boolean {
+	return new RegExp(`^${UUID}$`, 'i').test(value);
+}
+
+/** A live skill by its address. */
+export async function findSkillByUuid(ctx: QueryCtx, uuid: string): Promise<Doc<'skills'> | null> {
+	const rows = await ctx.db
+		.query('skills')
+		.withIndex('by_uuid', (q) => q.eq('uuid', uuid.toLowerCase()))
+		.collect();
+
+	return rows.find((r) => r.deletedAt === undefined) ?? null;
+}
+
+/** Who made a skill or pack, as its public page shows them. */
+export type Owner = { name: string; image: string | null };
+
+export async function ownerOf(ctx: QueryCtx, userId: string): Promise<Owner> {
+	const user = await authComponent.getAnyUserById(ctx, userId);
+	// never the email: that is only ever shown to its owner, and only if they allow it
+	return { name: user?.name?.trim() || 'Someone', image: user?.image ?? null };
+}
+
+/** May this viewer read it? The owner always; anyone else only once it is public. */
+export function canView(row: { userId: string; public?: boolean }, viewerId: string | null) {
+	return row.public === true || row.userId === viewerId;
+}
+
+export type SkillView = {
+	skill: Doc<'skills'>;
+	files: FileLink[];
+	owner: Owner;
+	/** The viewer owns it, so the page can say who else can see it. */
+	mine: boolean;
+};
+
+/** A skill at its address, for its page and its JSON. Null when absent or not the viewer's to see. */
+export async function viewSkill(
+	ctx: QueryCtx,
+	uuid: string,
+	viewerId: string | null
+): Promise<SkillView | null> {
+	const skill = await findSkillByUuid(ctx, uuid);
+	if (!skill || !canView(skill, viewerId)) return null;
+
+	return {
+		skill,
+		files: toLinks(await fileRows(ctx, skill._id)),
+		owner: await ownerOf(ctx, skill.userId),
+		mine: skill.userId === viewerId
+	};
+}
+
+/* ------------------------------------------------------------------ packs */
+
+/** What a pack entry that names a skill on skilless resolves to, for display. */
+export type EntrySkill = {
+	uuid: string;
+	name: string;
+	title?: string;
+	description?: string;
+	public: boolean;
+	/** The viewer's own skill. */
+	mine: boolean;
+};
+
+/**
+ * Where a pack entry points on GitHub — `github.com/owner/repo/path#ref`,
+ * `owner/repo`, or a `/tree/<ref>/` URL — as a repo key and a path in it.
+ * Null for anything else.
+ */
+export function githubEntry(entry: string): { key: string; subpath: string } | null {
+	const rest = entry
+		.trim()
+		.split('#')[0]!
+		.replace(/^https?:\/\//i, '')
+		.replace(/\/+$/, '');
+	let segments = rest.split('/').filter(Boolean);
+
+	if (segments[0]?.toLowerCase() === 'github.com') segments = segments.slice(1);
+	else if (segments[0]?.includes('.') || segments[0]?.includes(':')) return null;
+
+	const [owner, repo, marker, ref, ...tail] = segments;
+	if (!owner || !repo) return null;
+
+	const sub = (marker === 'tree' || marker === 'blob') && ref ? tail : segments.slice(2);
+	return {
+		key: `github.com/${owner}/${repo.replace(/\.git$/i, '')}`.toLowerCase(),
+		subpath: sub.join('/')
+	};
+}
+
+/** What a repository entry holds, from the pack owner's scan of it. */
+export type EntryRepo = {
+	/** False when the scan could not reach it. */
+	found: boolean;
+	description: string | null;
+	/** The skills `skilless add` would take from the entry, by name. */
+	skills: { name: string; description?: string; dir: string; sole?: boolean }[];
+};
+
+/** What a pack entry naming another pack resolves to, for display. */
+export type EntryPack = {
+	uuid: string;
+	name: string;
+	description?: string;
+	skillCount: number;
+	countPartial: boolean;
+	public: boolean;
+	mine: boolean;
+	owner: Owner;
+};
+
+export type ResolvedEntry = {
+	entry: string;
+	skill: EntrySkill | null;
+	repo: EntryRepo | null;
+	pack: EntryPack | null;
+};
+
+/**
+ * The pack an entry names, when it is a skilless pack address — its page,
+ * `/packs/<uuid>`, its JSON, or the page that edits it, on any host.
+ */
+export function packUuidOf(entry: string): string | null {
+	return (
+		new RegExp(`/(?:my-)?packs/(${UUID})(?:\\.json)?/?$`, 'i')
+			.exec(entry.trim().split('#')[0]!)?.[1]
+			?.toLowerCase() ?? null
+	);
+}
+
+/**
+ * A pack's entries, each with what it names: the skill, for a skilless address
+ * the viewer can see; the repo's description and skills, for a GitHub entry its
+ * owner has scanned. Anything else — gone, private to someone else, not scanned
+ * yet — resolves to nulls and shows as written.
+ */
+export async function resolveEntries(
+	ctx: QueryCtx,
+	entries: string[],
+	viewerId: string | null,
+	ownerId: string
+): Promise<ResolvedEntry[]> {
+	return await Promise.all(
+		entries.map(async (entry): Promise<ResolvedEntry> => {
+			const none = { entry, skill: null, repo: null, pack: null };
+
+			const packUuid = packUuidOf(entry);
+			if (packUuid) {
+				const pack = await findPack(ctx, packUuid);
+				if (!pack || !canView(pack, viewerId)) return none;
+
+				return {
+					...none,
+					pack: {
+						uuid: pack.uuid,
+						name: pack.name,
+						...(pack.description ? { description: pack.description } : {}),
+						skillCount: pack.skillCount ?? pack.skills.length,
+						countPartial: pack.skillCount === undefined || pack.countPartial === true,
+						public: pack.public === true,
+						mine: pack.userId === viewerId,
+						owner: await ownerOf(ctx, pack.userId)
+					}
+				};
+			}
+
+			const uuid = skillUuidOf(entry);
+			if (uuid) {
+				const skill = await findSkillByUuid(ctx, uuid);
+				if (!skill || !canView(skill, viewerId)) return none;
+
+				return {
+					entry,
+					repo: null,
+					pack: null,
+					skill: {
+						uuid: skill.uuid!,
+						name: skill.name,
+						title: skill.title,
+						description: skill.description,
+						public: skill.public === true,
+						mine: skill.userId === viewerId
+					}
+				};
+			}
+
+			const github = githubEntry(entry);
+			if (!github) return none;
+
+			const scan = await ctx.db
+				.query('repoScans')
+				.withIndex('by_user_and_key', (q) => q.eq('userId', ownerId).eq('key', github.key))
+				.unique();
+			// a private repo's contents are only its owner's to see
+			if (!scan || (scan.private && viewerId !== ownerId)) return none;
+
+			return {
+				entry,
+				skill: null,
+				pack: null,
+				repo: {
+					found: scan.found,
+					description: scan.description,
+					skills: skillsAt(scan.skills, github.subpath).map(({ name, description, dir, sole }) => ({
+						name,
+						dir,
+						...(description ? { description } : {}),
+						...(sole ? { sole } : {})
+					}))
+				}
+			};
+		})
+	);
+}
+
+/**
+ * Counts the skills a pack brings and stores it on the pack, so lists show it
+ * without resolving every entry. A skilless address is one skill; a GitHub
+ * entry is however many skills its owner's scan found there, or one, and the
+ * count marked partial, until it has been scanned; a pack is however many its
+ * own count says. A change goes on up to every pack that includes this one.
+ */
+export async function snapshotCount(
+	ctx: MutationCtx,
+	pack: Doc<'packs'>,
+	/** Packs already counted on this pass, so a loop that slipped in cannot recount forever. */
+	counted: Set<string> = new Set()
+): Promise<void> {
+	if (counted.has(pack.uuid)) return;
+	counted.add(pack.uuid);
+
+	let count = 0;
+	let partial = false;
+
+	for (const entry of pack.skills) {
+		const nested = packUuidOf(entry);
+		if (nested) {
+			const inner = await findPack(ctx, nested);
+			if (inner && canView(inner, pack.userId)) {
+				count += inner.skillCount ?? inner.skills.length;
+				partial ||= inner.skillCount === undefined || inner.countPartial === true;
+			} else {
+				count++;
+				partial = true;
+			}
+			continue;
+		}
+
+		const github = githubEntry(entry);
+		if (!github) {
+			count++;
+			continue;
+		}
+
+		const scan = await ctx.db
+			.query('repoScans')
+			.withIndex('by_user_and_key', (q) => q.eq('userId', pack.userId).eq('key', github.key))
+			.unique();
+
+		if (scan?.found) {
+			count += skillsAt(scan.skills, github.subpath).length;
+		} else {
+			count++;
+			partial ||= !scan;
+		}
+	}
+
+	if (pack.skillCount === count && (pack.countPartial ?? false) === partial) return;
+
+	await ctx.db.patch(pack._id, { skillCount: count, countPartial: partial });
+	await recountIncluding(ctx, pack.uuid, counted);
+}
+
+/** Counts again every pack that includes this one, as its count, or it, changed. */
+export async function recountIncluding(
+	ctx: MutationCtx,
+	uuid: string,
+	counted: Set<string> = new Set()
+): Promise<void> {
+	const links = await ctx.db
+		.query('packLinks')
+		.withIndex('by_to', (q) => q.eq('to', uuid))
+		.collect();
+
+	for (const link of links) {
+		const outer = await ctx.db.get(link.from);
+		if (outer) await snapshotCount(ctx, outer, counted);
+	}
+}
+
+/** Rewrites which packs this one includes, from its entries. */
+export async function linkPacks(ctx: MutationCtx, pack: Doc<'packs'>): Promise<void> {
+	const links = await ctx.db
+		.query('packLinks')
+		.withIndex('by_from', (q) => q.eq('from', pack._id))
+		.collect();
+	for (const link of links) await ctx.db.delete(link._id);
+
+	const included = new Set(pack.skills.flatMap((entry) => packUuidOf(entry) ?? []));
+	for (const to of included) await ctx.db.insert('packLinks', { from: pack._id, to });
+}
+
+/**
+ * Refuses entries that would make a pack include itself — directly, or through
+ * packs that lead back to it. Only skilless packs can be followed here; a loop
+ * through a pack hosted elsewhere is the CLI's to catch.
+ */
+export async function assertNoLoop(
+	ctx: QueryCtx,
+	pack: Doc<'packs'>,
+	entries: string[]
+): Promise<void> {
+	const invalid = (reason: string) => {
+		throw createConvexError(convexError.InvalidPack({ reason }));
+	};
+
+	const seen = new Set<string>();
+	const reaches = async (uuid: string): Promise<boolean> => {
+		if (uuid === pack.uuid) return true;
+		if (seen.has(uuid)) return false;
+		seen.add(uuid);
+
+		const inner = await findPack(ctx, uuid);
+		for (const entry of inner?.skills ?? []) {
+			const next = packUuidOf(entry);
+			if (next && (await reaches(next))) return true;
+		}
+		return false;
+	};
+
+	for (const entry of entries) {
+		const uuid = packUuidOf(entry);
+		if (!uuid) continue;
+		if (uuid === pack.uuid) invalid('a pack cannot include itself');
+
+		if (await reaches(uuid)) {
+			const inner = await findPack(ctx, uuid);
+			const name = inner && canView(inner, pack.userId) ? inner.name : 'that pack';
+			invalid(`${name} already includes ${pack.name}, so adding it would make a loop`);
+		}
+	}
+}
+
+/** One skill a pack brings, and the entry that would bring just that skill. */
+export type PackSkill = {
+	/** `github.com/owner/repo/dir`, or a skill's address: add it to take this skill alone. */
+	entry: string;
+	name: string;
+	description?: string;
+	/** The repo has not been scanned, so this is the entry itself, not one skill of it. */
+	unscanned?: boolean;
+};
+
+/**
+ * Every skill a pack brings, nested packs included, each with an entry that
+ * would bring it alone — for picking some of a pack's skills rather than the
+ * whole pack. As the viewer can see it: private skills and repos of other
+ * people are left out. A name two entries share is the first one's.
+ */
+export async function packSkills(
+	ctx: QueryCtx,
+	pack: Doc<'packs'>,
+	viewerId: string | null
+): Promise<PackSkill[]> {
+	const found = new Map<string, PackSkill>();
+	const visited = new Set<string>();
+
+	const walk = async (current: Doc<'packs'>): Promise<void> => {
+		if (visited.has(current.uuid)) return;
+		visited.add(current.uuid);
+
+		for (const raw of current.skills) {
+			const entry = raw.trim();
+			const take = (skill: PackSkill) => {
+				if (!found.has(skill.name)) found.set(skill.name, skill);
+			};
+
+			const nested = packUuidOf(entry);
+			if (nested) {
+				const inner = await findPack(ctx, nested);
+				if (inner && canView(inner, viewerId)) await walk(inner);
+				continue;
+			}
+
+			const uuid = skillUuidOf(entry);
+			if (uuid) {
+				const skill = await findSkillByUuid(ctx, uuid);
+				if (skill && canView(skill, viewerId)) {
+					take({
+						entry,
+						name: skill.name,
+						...(skill.description ? { description: skill.description } : {})
+					});
+				}
+				continue;
+			}
+
+			const github = githubEntry(entry);
+			if (!github) continue;
+
+			const scan = await ctx.db
+				.query('repoScans')
+				.withIndex('by_user_and_key', (q) => q.eq('userId', current.userId).eq('key', github.key))
+				.unique();
+			if (scan?.private && viewerId !== current.userId) continue;
+
+			if (!scan?.found) {
+				take({ entry, name: github.key.slice('github.com/'.length), unscanned: true });
+				continue;
+			}
+
+			// a pinned entry's skills stay pinned to the same ref
+			const ref = entry.includes('#') ? `#${entry.split('#')[1]}` : '';
+			for (const skill of skillsAt(scan.skills, github.subpath)) {
+				take({
+					entry: `${skill.dir ? `${github.key}/${skill.dir}` : github.key}${ref}`,
+					name: skill.name,
+					...(skill.description ? { description: skill.description } : {})
+				});
+			}
+		}
+	};
+
+	await walk(pack);
+	return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function findPack(ctx: QueryCtx, uuid: string): Promise<Doc<'packs'> | null> {
+	return await ctx.db
+		.query('packs')
+		.withIndex('by_uuid', (q) => q.eq('uuid', uuid.toLowerCase()))
+		.first();
+}
+
+/** One of the user's own packs, for changing it. */
+export async function ownPack(ctx: QueryCtx, userId: string, uuid: string): Promise<Doc<'packs'>> {
+	const pack = await findPack(ctx, uuid);
+	if (!pack || pack.userId !== userId) throw createConvexError(convexError.PackNotFound());
+	return pack;
+}
+
+export async function listPacks(ctx: QueryCtx, userId: string): Promise<Doc<'packs'>[]> {
+	const rows = await ctx.db
+		.query('packs')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.collect();
+
+	return rows.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export type PackView = {
+	pack: Doc<'packs'>;
+	entries: ResolvedEntry[];
+	owner: Owner;
+	mine: boolean;
+};
+
+/** A pack at its address, for its page and its JSON. Null when absent or not the viewer's to see. */
+export async function viewPack(
+	ctx: QueryCtx,
+	uuid: string,
+	viewerId: string | null
+): Promise<PackView | null> {
+	const pack = await findPack(ctx, uuid);
+	if (!pack || !canView(pack, viewerId)) return null;
+
+	return {
+		pack,
+		entries: await resolveEntries(ctx, pack.skills, viewerId, pack.userId),
+		owner: await ownerOf(ctx, pack.userId),
+		mine: pack.userId === viewerId
+	};
+}
+
 /** Where one file's contents live. What a skill row points at, never the contents. */
-export type StoredFile = { path: string; key: string; sha256: string; size: number };
+export type StoredFile = {
+	path: string;
+	key: string;
+	sha256: string;
+	size: number;
+	/** Bytes that are not text, served as is rather than read as a string. */
+	binary?: boolean;
+};
 
 /** Every file row of a skill, sorted by path. */
 export async function fileRows(ctx: QueryCtx, skillId: Id<'skills'>): Promise<Doc<'skillFiles'>[]> {
@@ -233,7 +752,12 @@ export async function commitSkill(
 		skillId = existing._id;
 		await ctx.db.patch(skillId, fields);
 	} else {
-		skillId = await ctx.db.insert('skills', { userId: args.userId, name: args.name, ...fields });
+		skillId = await ctx.db.insert('skills', {
+			userId: args.userId,
+			name: args.name,
+			uuid: crypto.randomUUID(),
+			...fields
+		});
 	}
 
 	for (const row of rows) await ctx.db.delete(row._id);

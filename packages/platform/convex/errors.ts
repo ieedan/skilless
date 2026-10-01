@@ -40,12 +40,32 @@ export const convexError = errf.create({
 	SkillTooLarge: {
 		code: 'SKILL_TOO_LARGE',
 		message: 'Skill too large',
-		userMessage: 'Skills are limited to 1MB'
+		userMessage: 'Skills are limited to 3MB'
+	},
+	SkillFileBinary: {
+		code: 'SKILL_FILE_BINARY',
+		message: 'Skill file binary',
+		userMessage: 'That file is binary, so it cannot be edited as text'
 	},
 	SkillFileNotText: {
 		code: 'SKILL_FILE_NOT_TEXT',
 		message: 'Skill file not text',
 		userMessage: 'Skill files must be text'
+	},
+	PackNotFound: {
+		code: 'PACK_NOT_FOUND',
+		message: 'Pack not found',
+		userMessage: 'That pack does not exist'
+	},
+	InvalidPack: {
+		code: 'INVALID_PACK',
+		message: (opts: { reason: string }) => `Invalid pack: ${opts.reason}`,
+		userMessage: 'That pack could not be saved'
+	},
+	SkillFilePathInvalid: {
+		code: 'SKILL_FILE_PATH_INVALID',
+		message: 'Skill file path invalid',
+		userMessage: 'File paths must be relative and stay inside the skill'
 	},
 	ProjectNotFound: {
 		code: 'PROJECT_NOT_FOUND',

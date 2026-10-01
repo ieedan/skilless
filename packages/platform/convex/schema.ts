@@ -1,6 +1,21 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
+/**
+ * Where a skill was copied from. `url` is a git repository, or a skill served
+ * as JSON (`skilless.dev/skills/<uuid>`), in which case `path` is empty.
+ * `pack` is the pack that last added it — what the app and CLI show as its
+ * origin, and how `skilless update` finds the packs you follow.
+ */
+export const sourceValidator = v.object({
+	url: v.string(),
+	ref: v.optional(v.string()),
+	/** The skill's directory inside the repo. Empty for the repo root. */
+	path: v.string(),
+	hash: v.string(),
+	pack: v.optional(v.object({ url: v.string(), name: v.optional(v.string()) }))
+});
+
 export default defineSchema({
 	/** A skill in a user's library. Soft deleted — `deletedAt` set means it lives in the trash. */
 	skills: defineTable({
@@ -23,25 +38,51 @@ export default defineSchema({
 		/** Global skills are resolved into every project, without being bound to any. */
 		global: v.optional(v.boolean()),
 		/**
-		 * The git repository a skill was copied from by `skilless add <repo>`, so
-		 * `skilless update` can refresh it. `hash` is the upstream contentHash as
-		 * of the last add or update — equal to `contentHash` until someone edits.
+		 * Where a skill was copied from by `skilless add`, so `skilless update` can
+		 * refresh it. `hash` is the upstream contentHash as of the last add or
+		 * update — equal to `contentHash` until someone edits.
 		 */
-		source: v.optional(
-			v.object({
-				url: v.string(),
-				ref: v.optional(v.string()),
-				/** The skill's directory inside the repo. Empty for the repo root. */
-				path: v.string(),
-				hash: v.string()
-			})
-		),
+		source: v.optional(sourceValidator),
+		/**
+		 * The skill's address, `skilless.dev/skills/<uuid>`. Set on insert; absent
+		 * only on rows from before it existed, until `skills:backfillUuids` runs.
+		 */
+		uuid: v.optional(v.string()),
+		/** Anyone can read a public skill at its address. Otherwise only its owner. */
+		public: v.optional(v.boolean()),
 		deletedAt: v.optional(v.number()),
 		/** Server receive time. Display only — never compared against a client clock. */
 		updatedAt: v.number()
 	})
 		.index('by_user_and_name', ['userId', 'name'])
-		.index('by_user', ['userId']),
+		.index('by_user', ['userId'])
+		.index('by_uuid', ['uuid']),
+
+	/**
+	 * A list of skills from anywhere, added together with `skilless add <pack>`.
+	 * Served as JSON at `skilless.dev/packs/<uuid>` — the same shape as a pack
+	 * file someone writes by hand.
+	 */
+	packs: defineTable({
+		userId: v.string(),
+		uuid: v.string(),
+		name: v.string(),
+		description: v.optional(v.string()),
+		/** Sources, as written in a pack file: git repos and `skilless.dev/skills/<uuid>`. */
+		skills: v.array(v.string()),
+		/** Anyone can read a public pack at its address. Otherwise only its owner. */
+		public: v.optional(v.boolean()),
+		/**
+		 * How many skills it brings, as of the last change to it or a scan of one
+		 * of its repos (see `model.snapshotCount`). `countPartial` while a repo
+		 * entry has not been scanned yet, so the count is at least this.
+		 */
+		skillCount: v.optional(v.number()),
+		countPartial: v.optional(v.boolean()),
+		updatedAt: v.number()
+	})
+		.index('by_user', ['userId'])
+		.index('by_uuid', ['uuid']),
 
 	/**
 	 * One file of a skill. The contents live in R2 under `key`; this row is only
@@ -54,8 +95,10 @@ export default defineSchema({
 		key: v.string(),
 		/** sha256 of the contents, so an unchanged file keeps its object. */
 		sha256: v.string(),
-		/** Bytes, UTF-8. */
-		size: v.number()
+		/** Bytes. */
+		size: v.number(),
+		/** Not text: an image, a font, a compiled helper. Read as bytes, never as a string. */
+		binary: v.optional(v.boolean())
 	}).index('by_skill', ['skillId']),
 
 	/** A project, keyed by its normalized git remote e.g. `github.com/ieedan/layerchart`. */
@@ -89,10 +132,56 @@ export default defineSchema({
 		/** A project key, e.g. `github.com/ieedan/skilless`. */
 		key: v.string(),
 		description: v.union(v.string(), v.null()),
-		private: v.boolean()
+		private: v.boolean(),
+		/**
+		 * Whether GitHub's code search finds a SKILL.md in it, so pickers can leave
+		 * out empty repos without scanning each. Absent when search cannot say:
+		 * it skips forks, and needs a token.
+		 */
+		hasSkills: v.optional(v.boolean())
 	})
 		.index('by_user', ['userId'])
 		.index('by_user_and_key', ['userId', 'key']),
+
+	/**
+	 * Which packs include which, so a pack whose skill count changes can tell
+	 * the packs holding it to count again. Rebuilt from a pack's entries on
+	 * every change to them.
+	 */
+	packLinks: defineTable({
+		from: v.id('packs'),
+		/** The included pack's UUID, which may not exist (yet, or any more). */
+		to: v.string()
+	})
+		.index('by_from', ['from'])
+		.index('by_to', ['to']),
+
+	/**
+	 * What a GitHub repo holds, as one user can see it: its description and every
+	 * skill in it, read by `scans.scan` so the website can show and pick skills
+	 * from a repo without cloning it. Per user, since a private repo's contents
+	 * are only theirs to see.
+	 */
+	repoScans: defineTable({
+		userId: v.string(),
+		/** A project key, e.g. `github.com/anthropics/skills`. */
+		key: v.string(),
+		/** False when the repo could not be reached: gone, or private and not shared with the app. */
+		found: v.boolean(),
+		private: v.boolean(),
+		description: v.union(v.string(), v.null()),
+		/** Every directory holding a SKILL.md, with what its frontmatter says. `''` is the repo root. */
+		skills: v.array(
+			v.object({
+				dir: v.string(),
+				name: v.string(),
+				description: v.optional(v.string()),
+				/** SKILL.md is its only file, so a link goes to it rather than the folder. */
+				sole: v.optional(v.boolean())
+			})
+		),
+		scannedAt: v.number()
+	}).index('by_user_and_key', ['userId', 'key']),
 
 	/** When a user's `repos` were last filled from GitHub. At most one row per user. */
 	repoSyncs: defineTable({
@@ -100,7 +189,11 @@ export default defineSchema({
 		/** Absent until the first lookup settles. */
 		syncedAt: v.optional(v.number()),
 		/** Set while a lookup is in flight, so opening several pickers queues just one. */
-		requestedAt: v.optional(v.number())
+		requestedAt: v.optional(v.number()),
+		/** Superseded by `skillsVersion`; left so rows written with it still validate. */
+		skillsSearched: v.optional(v.boolean()),
+		/** How the last lookup decided which repos have skills; an older cache looks again once. */
+		skillsVersion: v.optional(v.number())
 	}).index('by_user', ['userId']),
 
 	bindings: defineTable({

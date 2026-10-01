@@ -17,12 +17,12 @@
 		class="shrink-0 rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 		aria-label="Account"
 	>
-		<Avatar seed={user.seed} size={30} />
+		<Avatar seed={user.seed} src={user.image} size={30} />
 	</Drawer.Trigger>
 
 	<Drawer.Content>
 		<Drawer.Header class="flex-row items-center gap-3">
-			<Avatar seed={user.seed} size={36} />
+			<Avatar seed={user.seed} src={user.image} size={36} />
 			<div class="flex min-w-0 flex-col">
 				<Drawer.Title class="truncate">{user.name}</Drawer.Title>
 				{#if user.subtitle}

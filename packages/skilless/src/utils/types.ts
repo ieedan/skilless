@@ -1,4 +1,5 @@
-export type SkillFile = { path: string; contents: string };
+/** Text as is, or a binary file's bytes as base64 (`encoding: 'base64'`). */
+export type SkillFile = { path: string; contents: string; encoding?: 'base64' };
 
 /** A skill as it exists in `~/.skilless/skills`. */
 export type LocalSkill = {
@@ -10,17 +11,27 @@ export type LocalSkill = {
 	editedAt: number;
 };
 
+/** A pack, by where it was read from: a URL, or a file on this machine. */
+export type PackRef = {
+	url: string;
+	/** Its `name`, shown as where its skills came from. */
+	name?: string;
+};
+
 /**
- * The git repository a skill was copied from by `skilless add <repo>`. `hash`
- * is the upstream contentHash as of the last add or update, which is how
- * `update` tells an untouched copy from one you have edited.
+ * Where a skill was copied from by `skilless add`: a git repository, or a
+ * skill served as JSON at an address like `skilless.dev/skills/<uuid>` (then
+ * `path` is empty). `hash` is the upstream contentHash as of the last add or
+ * update, which is how `update` tells an untouched copy from one you have edited.
  */
 export type SkillSource = {
 	url: string;
 	ref?: string;
-	/** The skill's directory inside the repo. Empty for the repo root. */
+	/** The skill's directory inside the repo. Empty for the repo root, or an address. */
 	path: string;
 	hash: string;
+	/** The pack that last added it. Its origin, and how `update` finds the packs you follow. */
+	pack?: PackRef;
 };
 
 /** A skill as the API reports it, without file contents. */
@@ -33,6 +44,8 @@ export type RemoteSkill = {
 	global: boolean;
 	/** Null when it was not copied from a repo, or the server predates sources. */
 	source: SkillSource | null;
+	/** Its address is `/skills/<id>`. Absent from servers, and caches, that predate addresses. */
+	id?: string | null;
 };
 
 export type RemoteSkillWithFiles = RemoteSkill & { files: SkillFile[] };

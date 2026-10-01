@@ -17,12 +17,12 @@
 		class="shrink-0 rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 		aria-label="Account"
 	>
-		<Avatar seed={user.seed} size={30} />
+		<Avatar seed={user.seed} src={user.image} size={30} />
 	</DropdownMenu.Trigger>
 
 	<DropdownMenu.Content align="end" class="w-60">
 		<div class="flex items-center gap-2.5 px-1.5 py-1.5">
-			<Avatar seed={user.seed} size={32} />
+			<Avatar seed={user.seed} src={user.image} size={32} />
 			<div class="flex min-w-0 flex-col">
 				<span class="truncate text-sm text-popover-foreground">{user.name}</span>
 				{#if user.subtitle}

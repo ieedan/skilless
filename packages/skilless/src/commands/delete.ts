@@ -26,6 +26,34 @@ const schema = defaultCommandOptionsSchema.extend({
 });
 
 /**
+ * Deletes skills from the library — the store, this project's links, the
+ * user-level ones — and queues the deletion for the server. Shared with
+ * `update`, for a skill a pack you follow has dropped.
+ */
+export function deleteSkills(names: string[], cwd: string): void {
+	// queued before anything is removed here, so the deletion is never lost
+	// even if the server cannot hear about it yet
+	queueDelete(names);
+	dropSources(names);
+
+	const state = readState();
+	const root = project.projectRoot(cwd);
+
+	for (const name of names) {
+		fsu.remove(skillDir(name));
+		delete state.skills[name];
+
+		log.step(`Deleted ${name} from your library.`);
+	}
+
+	writeState(state);
+	project.unmaterialize(root, names);
+	project.unmaterialize(project.userScope(), names);
+
+	pushInBackground();
+}
+
+/**
  * Destructive on purpose — this deletes the skill, not just its link here. Undo
  * lives on the website, where deleted skills sit in a 30 day trash.
  */
@@ -65,30 +93,11 @@ export const deleteCommand = new Command('delete')
 				return;
 			}
 
-			// queued before anything is removed here, so the deletion is never lost
-			// even if the server cannot hear about it yet
-			queueDelete(names);
-			dropSources(names);
-
-			const state = readState();
-			const root = project.projectRoot(options.cwd);
-
-			for (const name of names) {
-				fsu.remove(skillDir(name));
-				delete state.skills[name];
-
-				log.step(`Deleted ${name} from your library.`);
-			}
-
-			writeState(state);
-			project.unmaterialize(root, names);
-			project.unmaterialize(project.userScope(), names);
-
-			pushInBackground();
+			deleteSkills(names, options.cwd);
 
 			log.blank();
 			log.dim('Other checkouts will clean up on their next `skilless install`.');
-			log.dim('Restore at skilless.dev/skills within 30 days.');
+			log.dim('Restore at skilless.dev/my-skills within 30 days.');
 
 			remote?.report();
 		});

@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import * as model from './model';
 import { r2 } from './r2';
+import { sourceValidator } from './schema';
 import { mutation, query, requireUser, secretMutation, secretQuery } from './utils';
 
 /*
@@ -33,8 +34,8 @@ export const get = query({
 
 		return {
 			...skill,
-			/** Paths only. Contents come from `links:read`. */
-			files: rows.map((row) => ({ path: row.path })),
+			/** Paths, and which are binary. Contents come from `links:read`. */
+			files: rows.map((row) => ({ path: row.path, ...(row.binary ? { binary: true } : {}) })),
 			projects: await model.projectsForSkill(ctx, skill._id)
 		};
 	}
@@ -62,6 +63,24 @@ export const setGlobal = mutation({
 	handler: async (ctx, args) => {
 		const userId = await requireUser(ctx);
 		await model.setGlobal(ctx, userId, args.name, args.global);
+	}
+});
+
+export const setPublic = mutation({
+	args: { name: v.string(), public: v.boolean() },
+	handler: async (ctx, args) => {
+		const userId = await requireUser(ctx);
+		await model.setPublic(ctx, userId, args.name, args.public);
+	}
+});
+
+/** A skill at its address, for its page. Public, or the signed in viewer's own. */
+export const view = query({
+	args: { uuid: v.string() },
+	handler: async (ctx, args) => {
+		if (!model.isUuid(args.uuid)) return null;
+		const user = await ctx.auth.getUserIdentity();
+		return await model.viewSkill(ctx, args.uuid, user?.subject ?? null);
 	}
 });
 
@@ -93,18 +112,19 @@ export const setSourceFor = secretMutation({
 	args: {
 		userId: v.string(),
 		name: v.string(),
-		source: v.union(
-			v.object({
-				url: v.string(),
-				ref: v.optional(v.string()),
-				path: v.string(),
-				hash: v.string()
-			}),
-			v.null()
-		)
+		source: v.union(sourceValidator, v.null())
 	},
 	handler: async (ctx, args) => {
 		await model.setSource(ctx, args.userId, args.name, args.source);
+	}
+});
+
+/** A skill at its address, for its JSON. `viewerId` is whoever the bearer token belongs to, if anyone. */
+export const viewFor = secretQuery({
+	args: { uuid: v.string(), viewerId: v.union(v.string(), v.null()) },
+	handler: async (ctx, args) => {
+		if (!model.isUuid(args.uuid)) return null;
+		return await model.viewSkill(ctx, args.uuid, args.viewerId);
 	}
 });
 
@@ -121,7 +141,8 @@ const storedFileValidator = v.object({
 	path: v.string(),
 	key: v.string(),
 	sha256: v.string(),
-	size: v.number()
+	size: v.number(),
+	binary: v.optional(v.boolean())
 });
 
 /** What a write action starts from: the live skill's hash and file rows, or null. */
@@ -132,6 +153,14 @@ export const snapshot = internalQuery({
 		if (!skill) return null;
 
 		return { skill, files: await model.fileRows(ctx, skill._id) };
+	}
+});
+
+/** Records where a skill was copied from, for a write that already has the user. */
+export const setSource = internalMutation({
+	args: { userId: v.string(), name: v.string(), source: sourceValidator },
+	handler: async (ctx, args) => {
+		await model.setSource(ctx, args.userId, args.name, args.source);
 	}
 });
 
@@ -180,6 +209,23 @@ export const commit = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		return await model.commitSkill(ctx, args);
+	}
+});
+
+/**
+ * Gives every skill from before addresses existed one. Idempotent, so safe to
+ * run again: `npx convex run skills:backfillUuids`.
+ */
+export const backfillUuids = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ updated: number }> => {
+		let updated = 0;
+		for (const skill of await ctx.db.query('skills').collect()) {
+			if (skill.uuid) continue;
+			await ctx.db.patch(skill._id, { uuid: crypto.randomUUID() });
+			updated++;
+		}
+		return { updated };
 	}
 });
 

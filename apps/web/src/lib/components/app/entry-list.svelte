@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Entry } from '$lib/files';
+	import { listRow } from '$lib/list-nav';
 	import { submitAction } from '$lib/submit';
 	import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -29,7 +30,12 @@
 		// a menu item, not a button, so it shares CopyButton's clipboard logic rather than the component
 		try {
 			const text = (await contents)[path];
-			if (text !== undefined && (await copyText(text)) === 'success') {
+			// only text files are fetched for copying (see readContents)
+			if (text === undefined) {
+				toast.error('That file is binary, so there is no text to copy');
+				return;
+			}
+			if ((await copyText(text)) === 'success') {
 				toast.success('Copied contents');
 				return;
 			}
@@ -48,8 +54,12 @@
 {:else}
 	<ul class="divide-y divide-border">
 		{#each entries as entry (entry.path)}
-			<li class="relative flex items-center justify-between gap-4 px-2 py-3.5 md:px-6">
-				<a href="{base}/{entry.path}" class="flex min-w-0 flex-1 items-center gap-3 text-sm">
+			<li class="relative flex items-center justify-between gap-4 py-3.5">
+				<a
+					href="{base}/{entry.path}"
+					{...listRow}
+					class="flex min-w-0 flex-1 items-center gap-3 text-sm outline-none focus-visible:after:pointer-events-none focus-visible:after:absolute focus-visible:after:-inset-x-1.5 focus-visible:after:inset-y-1 focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/50 focus-visible:after:content-['']"
+				>
 					<span class="absolute inset-0" aria-hidden="true"></span>
 
 					{#if entry.kind === 'directory'}

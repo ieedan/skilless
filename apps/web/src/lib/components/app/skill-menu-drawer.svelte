@@ -10,6 +10,9 @@
 	import RiFileCopyLine from 'remixicon-svelte/icons/file-copy-line';
 	import RiDownload2Line from 'remixicon-svelte/icons/download-2-line';
 	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiLink from 'remixicon-svelte/icons/link';
+	import RiLockLine from 'remixicon-svelte/icons/lock-line';
+	import RiShareLine from 'remixicon-svelte/icons/share-line';
 
 	let {
 		skill,
@@ -28,7 +31,7 @@
 
 	let open = $state(false);
 
-	const base = $derived(`/skills/${encodeURIComponent(skill.name)}`);
+	const base = $derived(`/my-skills/${encodeURIComponent(skill.name)}`);
 	const main = $derived(skill.soleFile ?? 'SKILL.md');
 
 	/** Close first so the drawer is out of the way of whatever the action opens. */
@@ -71,7 +74,7 @@
 		</Drawer.Item>
 		<Drawer.Item
 			onclick={run(() =>
-				downloadZip(`/skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)
+				downloadZip(`/my-skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)
 			)}
 		>
 			<RiDownload2Line />
@@ -79,6 +82,26 @@
 		</Drawer.Item>
 
 		<Drawer.Separator />
+
+		{#if skill.uuid}
+			<Drawer.Item onclick={run(() => actions.copyLink(skill))}>
+				<RiLink />
+				Copy link
+			</Drawer.Item>
+			{#if actions.isPublic(skill)}
+				<Drawer.Item onclick={run(() => actions.setPublic(skill, false))}>
+					<RiLockLine />
+					Make private
+				</Drawer.Item>
+			{:else}
+				<Drawer.Item onclick={run(() => actions.setPublic(skill, true))}>
+					<RiShareLine />
+					Make public
+				</Drawer.Item>
+			{/if}
+
+			<Drawer.Separator />
+		{/if}
 
 		<ProjectSubdrawer
 			{projects}

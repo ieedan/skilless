@@ -25,7 +25,14 @@ function writeSources(skills: Record<string, SkillSource>): void {
 }
 
 function same(a: SkillSource | null | undefined, b: SkillSource | null | undefined): boolean {
-	return a?.url === b?.url && a?.ref === b?.ref && a?.path === b?.path && a?.hash === b?.hash;
+	return (
+		a?.url === b?.url &&
+		a?.ref === b?.ref &&
+		a?.path === b?.path &&
+		a?.hash === b?.hash &&
+		a?.pack?.url === b?.pack?.url &&
+		a?.pack?.name === b?.pack?.name
+	);
 }
 
 /** Records where a skill came from — null forgets it — here and, queued, on the server. */

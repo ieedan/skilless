@@ -28,10 +28,13 @@ export class UseRepos {
 		return this.#query.data?.syncing ?? false;
 	}
 
-	/** Fills the cache the first time. Call when a picker opens. */
+	/**
+	 * Fills the cache the first time. Call when a picker opens. The server
+	 * decides whether a look is due (a first fill, or a cache from before it
+	 * knew which repos have skills), so asking is cheap.
+	 */
 	open() {
 		this.#searched = false;
-		if (this.#query.data?.syncedAt != null) return;
 		this.#sync(false);
 	}
 
@@ -62,6 +65,11 @@ export class UseRepos {
 				description: repo.description
 			}));
 		return [...projects, ...repos].sort((a, b) => a.key.localeCompare(b.key));
+	}
+
+	/** Whether code search found skills in a cached repo; undefined when it could not say. */
+	hasSkills(key: string): boolean | undefined {
+		return this.#query.data?.repos.find((repo) => repo.key === key)?.hasSkills;
 	}
 
 	/** A cached repo by project key, for the page of one that is not a project yet. */

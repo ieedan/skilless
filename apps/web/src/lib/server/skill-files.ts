@@ -3,9 +3,10 @@ import { fetchFiles } from '@skilless/platform/client';
 import { fail, redirect, type RequestEvent } from '@sveltejs/kit';
 
 /**
- * Contents of a skill's files keyed by path, fetched from R2. The slow part of
- * any skill page, so pages that only list files return this unawaited and let
- * it stream in behind the page; only "Copy contents" waits on it.
+ * Contents of a skill's text files keyed by path, fetched from R2. The slow part
+ * of any skill page, so pages that only list files return this unawaited and let
+ * it stream in behind the page; only "Copy contents" waits on it. Binary files
+ * are left out: nothing on these pages reads them as text.
  */
 export async function readContents(
 	locals: App.Locals,
@@ -13,9 +14,16 @@ export async function readContents(
 	paths?: string[]
 ): Promise<Record<string, string>> {
 	const links = (await locals.convex.query(api.links.read, { name })) ?? [];
-	const wanted = paths ? links.filter((link) => paths.includes(link.path)) : links;
+	const wanted = links.filter((link) => !link.binary && (!paths || paths.includes(link.path)));
 	const files = await fetchFiles(wanted);
 	return Object.fromEntries(files.map((file) => [file.path, file.contents]));
+}
+
+/** Where to fetch a binary file from, and how big it is, or null if it is not one. */
+export async function binaryFile(locals: App.Locals, name: string, path: string) {
+	const links = (await locals.convex.query(api.links.read, { name })) ?? [];
+	const link = links.find((candidate) => candidate.path === path && candidate.binary);
+	return link ? { url: link.url, size: link.size ?? null } : null;
 }
 
 /**
@@ -58,7 +66,7 @@ export async function deleteSkillPath(event: RequestEvent, options: { currentDir
 	// resolves, so fall back to the skill root rather than 404 on reload.
 	const directory = options.currentDirectory;
 	if (directory && !remaining.some((file) => file.path.startsWith(`${directory}/`))) {
-		redirect(303, `/skills/${encodeURIComponent(name)}`);
+		redirect(303, `/my-skills/${encodeURIComponent(name)}`);
 	}
 
 	return { deleted: doomed.length };

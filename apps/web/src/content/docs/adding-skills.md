@@ -1,6 +1,6 @@
 ---
 title: Adding skills
-description: Add skills to a project from your library or a git repository, keep them up to date and take them out again.
+description: Add skills to a project from your library, a git repository or a pack, keep them up to date and take them out again.
 ---
 
 ## From your library
@@ -23,6 +23,17 @@ skilless add vercel-labs/agent-skills web-design-guidelines
 
 Leave out the skill names to pick from everything in the repository. The skills are copied into your library, remembering where they came from, and added to this project. If your library already has a skill with the same name, skilless keeps yours unless you pass `--overwrite`.
 
+## From a skill or pack on skilless
+
+A skill's link, or a [pack](/docs/packs), works the same way:
+
+```bash
+skilless add skilless.dev/skills/<id>
+skilless add skilless.dev/packs/<id>
+```
+
+A pack adds every skill it lists, and `skilless update` brings in any it gains later.
+
 ## Keeping them up to date
 
 `skilless update` brings skills you added from a repository up to date with what the repository has now:
@@ -39,7 +50,7 @@ If you've edited a skill since adding it, `update` leaves it alone. Pass `--forc
 These are different on purpose:
 
 - `skilless remove <skills...>` takes skills out of **this project**. They stay in your library and in every other project.
-- `skilless delete <skills...>` deletes skills from **your library**, which removes them from every project on every machine. skilless asks first. If you're signed in, you can restore a deleted skill from [skilless.dev](/skills) for 30 days.
+- `skilless delete <skills...>` deletes skills from **your library**, which removes them from every project on every machine. skilless asks first. If you're signed in, you can restore a deleted skill from [skilless.dev](/my-skills) for 30 days.
 
 ## Importing a folder of skills
 

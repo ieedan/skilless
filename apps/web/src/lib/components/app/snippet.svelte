@@ -12,12 +12,23 @@
 		className
 	)}
 >
-	<code class="font-mono text-sm text-foreground">{command}</code>
+	<!--
+		A read-only field rather than text, so a long command stays on one line and
+		scrolls, and a click selects the lot for copying by hand.
+	-->
+	<input
+		readonly
+		value={command}
+		aria-label="Command"
+		spellcheck="false"
+		onfocus={(event) => event.currentTarget.select()}
+		class="min-w-0 flex-1 bg-transparent font-mono text-sm text-foreground outline-none"
+	/>
 
 	<CopyButton
 		text={command}
 		size="icon-sm"
-		class="text-muted-foreground"
+		class="shrink-0 text-muted-foreground"
 		aria-label="Copy command"
 	/>
 </div>

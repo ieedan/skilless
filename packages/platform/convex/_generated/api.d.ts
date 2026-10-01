@@ -9,16 +9,20 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as discover from "../discover.js";
 import type * as errors from "../errors.js";
 import type * as files from "../files.js";
 import type * as github from "../github.js";
 import type * as http from "../http.js";
+import type * as imports from "../imports.js";
 import type * as links from "../links.js";
 import type * as model from "../model.js";
 import type * as oauth from "../oauth.js";
+import type * as packs from "../packs.js";
 import type * as preferences from "../preferences.js";
 import type * as projects from "../projects.js";
 import type * as r2 from "../r2.js";
+import type * as scans from "../scans.js";
 import type * as skills from "../skills.js";
 import type * as tokens from "../tokens.js";
 import type * as utils from "../utils.js";
@@ -31,16 +35,20 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  discover: typeof discover;
   errors: typeof errors;
   files: typeof files;
   github: typeof github;
   http: typeof http;
+  imports: typeof imports;
   links: typeof links;
   model: typeof model;
   oauth: typeof oauth;
+  packs: typeof packs;
   preferences: typeof preferences;
   projects: typeof projects;
   r2: typeof r2;
+  scans: typeof scans;
   skills: typeof skills;
   tokens: typeof tokens;
   utils: typeof utils;

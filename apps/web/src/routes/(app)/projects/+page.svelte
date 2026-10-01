@@ -6,13 +6,24 @@
 	import { UseInfinite } from '$lib/hooks/use-infinite.svelte';
 	import { UseRepos } from '$lib/hooks/use-repos.svelte';
 	import { projectParts, type ProjectParts } from '$lib/project';
-	import { around, search, terms } from '$lib/search';
+	import { search, terms } from '$lib/search';
 	import { SkillActions, type MenuProject } from '$lib/skill-actions.svelte';
 	import ProjectMenu from '$lib/components/app/project-menu.svelte';
-	import Highlighted from '$lib/components/app/highlighted.svelte';
+	import ListToolbar from '$lib/components/app/list-toolbar.svelte';
 	import ProjectIcon from '$lib/components/app/project-icon.svelte';
-	import SearchInput from '$lib/components/app/search-input.svelte';
+	import ListRow from '$lib/components/app/list-row.svelte';
+	import SelectSearch from '$lib/components/app/select-search.svelte';
+	import SkillSubmenu from '$lib/components/app/skill-submenu.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { UseSelection } from '$lib/hooks/use-selection.svelte';
+	import { submitAction } from '$lib/submit';
+	import { collapseX } from '$lib/transitions';
+	import { toast } from 'svelte-sonner';
+	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
 
 	let { data } = $props();
 
@@ -99,49 +110,97 @@
 
 	/** Every repo the app can see can run to hundreds of rows, each with a menu. */
 	const list = new UseInfinite();
+
+	/** Checked rows; actions only reach the ones on screen. Keyed by key, which a repo keeps when it becomes a project. */
+	const selection = new UseSelection(
+		() => results,
+		(row) => row.project.key
+	);
+	const selected = $derived(selection.selected.map((row) => row.project));
+
+	const plural = (n: number) => `${n} ${n === 1 ? 'project' : 'projects'}`;
+
+	/** A repo that is not a project yet has nothing to uninstall. */
+	const installed = $derived(selected.filter((project) => !('unsaved' in project)));
+
+	/** Checked when every selected project has it; checking adds it to the ones that do not. */
+	const boundToAll = (skill: (typeof skills)[number]) =>
+		selected.every((project) => actions.isBound(skill, project));
+
+	function bindAll(skill: (typeof skills)[number], bound: boolean) {
+		for (const project of selected) {
+			if (actions.isBound(skill, project) !== bound) actions.setBinding(skill, project, bound);
+		}
+	}
+
+	function uninstallSelected() {
+		const doomed = [...installed];
+		const title =
+			doomed.length === 1
+				? `Uninstall ${projectParts(doomed[0].key).path}?`
+				: `Uninstall ${plural(doomed.length)}?`;
+		confirmDelete({
+			title,
+			description:
+				doomed.length === 1
+					? 'Every skill is removed from this project. The skills stay in your library.'
+					: 'Every skill is removed from these projects. The skills stay in your library.',
+			confirm: { text: 'Uninstall' },
+			onConfirm: async () => {
+				// fed by live queries, so there is nothing to invalidate
+				const results = await Promise.all(
+					doomed.map((project) =>
+						submitAction(
+							'/projects?/remove',
+							{ projectId: project._id },
+							{ keepFocus: true, invalidate: false }
+						).catch(() => null)
+					)
+				);
+				const failed = results.filter((result) => result?.type !== 'success').length;
+				if (failed > 0) toast.error(`Could not uninstall ${failed} of ${plural(doomed.length)}`);
+			}
+		});
+	}
 </script>
 
-{#snippet item({ project, parts, description, unreachable, pending }: Row)}
+{#snippet item(row: Row)}
+	{@const { project, parts, description, unreachable, pending } = row}
 	{@const n = count(project)}
-	<li class="relative flex items-center justify-between gap-4 py-3.5">
-		<!-- a repo with no skills yet opens too: its page is where you give it some -->
-		<a href="/projects/{project.key}" class="flex min-w-0 items-start gap-3">
-			<!-- stretched so the whole row is the hit target, without nesting the menu inside the link -->
-			<span class="absolute inset-0" aria-hidden="true"></span>
-			<ProjectIcon {parts} size="md" class="mt-0.5" />
-
-			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-				<span class="flex min-w-0 items-center gap-2">
-					<span class="truncate text-sm font-semibold text-card-foreground" title={project.key}>
-						<Highlighted text={parts.path} terms={queryTerms} />
-					</span>
-					<span class="shrink-0 text-xs text-muted-foreground">
-						{n}
-						{n === 1 ? 'skill' : 'skills'}
-					</span>
-				</span>
-
-				<!-- one line at a reading width, like skill descriptions -->
-				{#if description}
-					<span class="max-w-2xl truncate text-[13px] text-muted-foreground">
-						<Highlighted text={around(description, queryTerms)} terms={queryTerms} />
-					</span>
-				{:else if pending}
-					<Skeleton class="my-0.5 h-3.5 w-2/3" />
-				{:else if unreachable}
-					<span class="text-[13px] text-muted-foreground"
-						>Private repo, not shared with {APP_NAME}</span
-					>
-				{:else}
-					<span class="text-[13px] text-muted-foreground">No description</span>
-				{/if}
-			</div>
-		</a>
-
-		<div class="relative shrink-0">
-			<ProjectMenu {project} {skills} {actions} />
-		</div>
-	</li>
+	<!-- the row's `actions` snippet shadows the page's, inside the row -->
+	{@const menuActions = actions}
+	<!-- a repo with no skills yet opens too: its page is where you give it some -->
+	<ListRow
+		title={parts.path}
+		href="/projects/{project.key}"
+		tooltip={project.key}
+		terms={queryTerms}
+		{description}
+		selected={selection.has(row)}
+		onSelectedChange={(checked) => selection.set(row, checked)}
+	>
+		{#snippet leading()}
+			<ProjectIcon {parts} size="md" />
+		{/snippet}
+		{#snippet meta()}
+			<span class="shrink-0 text-xs text-muted-foreground">
+				{n}
+				{n === 1 ? 'skill' : 'skills'}
+			</span>
+		{/snippet}
+		{#snippet subline()}
+			{#if pending}
+				<Skeleton class="my-0.5 h-3.5 w-2/3" />
+			{:else if unreachable}
+				Private repo, not shared with {APP_NAME}
+			{:else}
+				No description
+			{/if}
+		{/snippet}
+		{#snippet actions()}
+			<ProjectMenu {project} {skills} actions={menuActions} />
+		{/snippet}
+	</ListRow>
 {/snippet}
 
 {#snippet noMatch()}
@@ -152,12 +211,62 @@
 
 <svelte:head><title>Projects · {APP_NAME}</title></svelte:head>
 
-<SearchInput
-	placeholder="Search projects"
-	aria-label="Search projects"
-	class="mt-4 mb-2"
-	bind:value={() => query, onSearch}
-/>
+<ListToolbar>
+	<SelectSearch
+		checked={selection.all}
+		indeterminate={selection.some}
+		onCheckedChange={(checked) => selection.setAll(checked)}
+		selectLabel="Select all shown projects"
+		placeholder="Search projects"
+		label="Search projects"
+		class="flex-1"
+		bind:value={() => query, onSearch}
+	/>
+
+	<!-- only there while something is checked, growing in beside the search -->
+	{#if selected.length > 0}
+		<div transition:collapseX class="shrink-0">
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="outline"
+							size="icon-sm"
+							aria-label="Actions for {plural(selected.length)}"
+						>
+							<RiMoreFill />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+
+				<DropdownMenu.Content align="end">
+					<DropdownMenu.Label>{plural(selected.length)} selected</DropdownMenu.Label>
+					<SkillSubmenu
+						{skills}
+						isGlobal={(skill) => actions.isGlobal(skill)}
+						isBound={boundToAll}
+						onToggle={bindAll}
+					/>
+
+					<DropdownMenu.Separator />
+
+					<!-- disabled rather than hidden when only new repos are checked, so the menu does not reshuffle -->
+					<DropdownMenu.Item
+						variant="destructive"
+						disabled={installed.length === 0}
+						onSelect={uninstallSelected}
+					>
+						<RiDeleteBinLine />
+						{installed.length === selected.length || installed.length === 0
+							? 'Uninstall'
+							: `Uninstall ${installed.length}`}
+					</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		</div>
+	{/if}
+</ListToolbar>
 
 {#if unreachable.length > 0}
 	<p class="mb-2 rounded-md border border-border px-3 py-2.5 text-[13px] text-muted-foreground">

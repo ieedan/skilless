@@ -10,6 +10,9 @@
 	import RiFileCopyLine from 'remixicon-svelte/icons/file-copy-line';
 	import RiDownload2Line from 'remixicon-svelte/icons/download-2-line';
 	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiLink from 'remixicon-svelte/icons/link';
+	import RiLockLine from 'remixicon-svelte/icons/lock-line';
+	import RiShareLine from 'remixicon-svelte/icons/share-line';
 
 	let {
 		skill,
@@ -26,7 +29,7 @@
 		onRemoved?: () => Promise<unknown>;
 	} = $props();
 
-	const base = $derived(`/skills/${encodeURIComponent(skill.name)}`);
+	const base = $derived(`/my-skills/${encodeURIComponent(skill.name)}`);
 	const main = $derived(skill.soleFile ?? 'SKILL.md');
 </script>
 
@@ -63,13 +66,34 @@
 			Copy install command
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => downloadZip(`/skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)}
+			onSelect={() =>
+				downloadZip(`/my-skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)}
 		>
 			<RiDownload2Line />
 			Download
 		</DropdownMenu.Item>
 
 		<DropdownMenu.Separator />
+
+		{#if skill.uuid}
+			<DropdownMenu.Item onSelect={() => actions.copyLink(skill)}>
+				<RiLink />
+				Copy link
+			</DropdownMenu.Item>
+			{#if actions.isPublic(skill)}
+				<DropdownMenu.Item onSelect={() => actions.setPublic(skill, false)}>
+					<RiLockLine />
+					Make private
+				</DropdownMenu.Item>
+			{:else}
+				<DropdownMenu.Item onSelect={() => actions.setPublic(skill, true)}>
+					<RiShareLine />
+					Make public
+				</DropdownMenu.Item>
+			{/if}
+
+			<DropdownMenu.Separator />
+		{/if}
 
 		<ProjectSubmenu
 			{projects}

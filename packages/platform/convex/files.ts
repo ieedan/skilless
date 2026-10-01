@@ -7,7 +7,7 @@ import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { internalAction, type ActionCtx } from './_generated/server';
 import { convexError, createConvexError } from './errors';
-import { parseFrontmatter, type SkillFile, type StoredFile, summarize } from './model';
+import { bytesOf, parseFrontmatter, type SkillFile, type StoredFile, summarize } from './model';
 import { FILE_CACHE_CONTROL, r2, toLinks } from './r2';
 import { action, requireUser, secretAction } from './utils';
 
@@ -17,39 +17,88 @@ import { action, requireUser, secretAction } from './utils';
  * are plain queries in `links.ts`.
  */
 
-const MAX_SKILL_BYTES = 1024 * 1024;
+/**
+ * Every file's bytes together: room for an image or two beside the prose. Held
+ * to 3MB because binary files travel as base64, a third bigger, and the web API
+ * runs where request and response bodies stop at 4.5MB.
+ */
+export const MAX_SKILL_BYTES = 3 * 1024 * 1024;
 const NUL = String.fromCharCode(0);
 const ATTEMPTS = 3;
 
-const fileValidator = v.object({ path: v.string(), contents: v.string() });
+const fileValidator = v.object({
+	path: v.string(),
+	contents: v.string(),
+	encoding: v.optional(v.literal('base64'))
+});
 
 /**
  * Must stay byte for byte identical to the CLI's `hashFiles`, or every sync sees
  * a conflict that isn't there.
  */
-function hashFiles(files: SkillFile[]): string {
+export function hashFiles(files: SkillFile[]): string {
 	const hash = crypto.createHash('sha256');
 
 	for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
 		hash.update(file.path);
 		hash.update(NUL);
-		hash.update(file.contents);
+		// bytes, so binary files hash too; a text file's bytes are its UTF-8, as before
+		hash.update(bytesOf(file));
 		hash.update(NUL);
 	}
 
 	return hash.digest('hex');
 }
 
-function sha256(contents: string): string {
-	return crypto.createHash('sha256').update(contents).digest('hex');
+function sha256(bytes: Buffer): string {
+	return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+	png: 'image/png',
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	gif: 'image/gif',
+	webp: 'image/webp',
+	avif: 'image/avif',
+	ico: 'image/x-icon',
+	pdf: 'application/pdf',
+	zip: 'application/zip',
+	woff: 'font/woff',
+	woff2: 'font/woff2',
+	ttf: 'font/ttf',
+	otf: 'font/otf',
+	mp3: 'audio/mpeg',
+	wav: 'audio/wav',
+	mp4: 'video/mp4',
+	webm: 'video/webm',
+	wasm: 'application/wasm'
+};
+
+/** What R2 serves a file as, so an image opens as an image. */
+function contentType(file: SkillFile): string {
+	if (file.encoding !== 'base64') return 'text/plain; charset=utf-8';
+	const extension = file.path.split('.').pop()?.toLowerCase() ?? '';
+	return CONTENT_TYPES[extension] ?? 'application/octet-stream';
+}
+
+/** Relative, forward slashes, no `..`: skills are shared now, so a path must stay inside its skill. */
+function isSafePath(file: string): boolean {
+	if (!file || file.includes('\\') || file.includes(NUL) || file.startsWith('/')) return false;
+	if (/^[a-z]:/i.test(file)) return false;
+	return file.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
 }
 
 function validate(files: SkillFile[]) {
 	let bytes = 0;
 
 	for (const file of files) {
-		if (file.contents.includes(NUL)) throw createConvexError(convexError.SkillFileNotText());
-		bytes += Buffer.byteLength(file.contents, 'utf8');
+		if (!isSafePath(file.path)) throw createConvexError(convexError.SkillFilePathInvalid());
+		// a file sent as text must be text; anything else comes as base64
+		if (file.encoding !== 'base64' && file.contents.includes(NUL)) {
+			throw createConvexError(convexError.SkillFileNotText());
+		}
+		bytes += bytesOf(file).byteLength;
 	}
 
 	if (bytes > MAX_SKILL_BYTES) throw createConvexError(convexError.SkillTooLarge());
@@ -61,7 +110,9 @@ async function readContents(rows: Doc<'skillFiles'>[]): Promise<SkillFile[]> {
 			const response = await fetch(link.url);
 			if (!response.ok) throw new Error(`Could not read ${link.path} from R2: ${response.status}`);
 
-			return { path: link.path, contents: await response.text() };
+			if (!link.binary) return { path: link.path, contents: await response.text() };
+			const bytes = Buffer.from(await response.arrayBuffer());
+			return { path: link.path, contents: bytes.toString('base64'), encoding: 'base64' as const };
 		})
 	);
 }
@@ -79,7 +130,7 @@ function isSkillChanged(error: unknown): boolean {
  * A commit that lost a race discards its uploads and starts over from the state
  * that beat it, so `change` must be safe to call more than once.
  */
-async function writeSkill(
+export async function writeSkill(
 	ctx: ActionCtx,
 	args: {
 		userId: string;
@@ -102,27 +153,32 @@ async function writeSkill(
 
 		const have = new Map<string, string>();
 		for (const row of snapshot?.files ?? []) {
-			have.set(row.sha256, row.key);
+			have.set(row.binary ? `binary:${row.sha256}` : row.sha256, row.key);
 		}
 
 		const stored: StoredFile[] = [];
-		const pending: { key: string; contents: string }[] = [];
+		const pending: { key: string; bytes: Buffer; contentType: string }[] = [];
 
 		for (const file of files) {
-			const hash = sha256(file.contents);
-			let key = have.get(hash);
+			const bytes = bytesOf(file);
+			const binary = file.encoding === 'base64';
+			const hash = sha256(bytes);
+			// the same bytes as text and as binary are served differently, so they keep apart
+			const id = binary ? `binary:${hash}` : hash;
+			let key = have.get(id);
 
 			if (!key) {
 				key = `skills/${crypto.randomUUID()}`;
-				have.set(hash, key);
-				pending.push({ key, contents: file.contents });
+				have.set(id, key);
+				pending.push({ key, bytes, contentType: contentType(file) });
 			}
 
 			stored.push({
 				path: file.path,
 				key,
 				sha256: hash,
-				size: Buffer.byteLength(file.contents, 'utf8')
+				size: bytes.byteLength,
+				...(binary ? { binary: true } : {})
 			});
 		}
 
@@ -138,8 +194,8 @@ async function writeSkill(
 						new PutObjectCommand({
 							Bucket: r2.config.bucket,
 							Key: upload.key,
-							Body: Buffer.from(upload.contents, 'utf8'),
-							ContentType: 'text/plain; charset=utf-8',
+							Body: upload.bytes,
+							ContentType: upload.contentType,
 							CacheControl: FILE_CACHE_CONTROL
 						})
 					)
@@ -195,12 +251,12 @@ export const writeFile = action({
 			editedAt: Date.now(),
 			change: (current) => {
 				if (!current) throw createConvexError(convexError.SkillNotFound());
-				if (!current.some((file) => file.path === args.path)) {
-					throw createConvexError(convexError.SkillFileNotFound());
-				}
+				const target = current.find((file) => file.path === args.path);
+				if (!target) throw createConvexError(convexError.SkillFileNotFound());
+				if (target.encoding === 'base64') throw createConvexError(convexError.SkillFileBinary());
 
 				return current.map((file) =>
-					file.path === args.path ? { ...file, contents: args.contents } : file
+					file.path === args.path ? { path: file.path, contents: args.contents } : file
 				);
 			}
 		});
@@ -244,27 +300,43 @@ export const deletePath = action({
 
 /* -------------------------------------------------------------------- api */
 
-/** Creates or replaces a skill with exactly this file set. */
+/**
+ * Creates or replaces a skill with exactly this file set. With `keepBinary`,
+ * binary files it already has and the set leaves out stay: an agent that only
+ * ever sees text can rewrite a skill without losing its images.
+ */
 export const upsertFor = secretAction({
 	args: {
 		userId: v.string(),
 		name: v.string(),
 		files: v.array(fileValidator),
-		editedAt: v.number()
+		editedAt: v.number(),
+		keepBinary: v.optional(v.boolean())
 	},
 	handler: async (ctx, args): Promise<Doc<'skills'>> => {
 		return await writeSkill(ctx, {
 			userId: args.userId,
 			name: args.name,
 			editedAt: args.editedAt,
-			change: () => args.files
+			change: (current) => {
+				if (!args.keepBinary || !current) return args.files;
+				const named = new Set(args.files.map((file) => file.path));
+				const kept = current.filter((file) => file.encoding === 'base64' && !named.has(file.path));
+				return [...args.files, ...kept];
+			}
 		});
 	}
 });
 
 /** Creates or replaces one file of an existing skill, leaving the others as they are. */
 export const writeFileFor = secretAction({
-	args: { userId: v.string(), name: v.string(), path: v.string(), contents: v.string() },
+	args: {
+		userId: v.string(),
+		name: v.string(),
+		path: v.string(),
+		contents: v.string(),
+		encoding: v.optional(v.literal('base64'))
+	},
 	handler: async (ctx, args): Promise<Doc<'skills'>> => {
 		return await writeSkill(ctx, {
 			userId: args.userId,
@@ -274,7 +346,14 @@ export const writeFileFor = secretAction({
 				if (!current) throw createConvexError(convexError.SkillNotFound());
 
 				const rest = current.filter((file) => file.path !== args.path);
-				return [...rest, { path: args.path, contents: args.contents }];
+				return [
+					...rest,
+					{
+						path: args.path,
+						contents: args.contents,
+						...(args.encoding ? { encoding: args.encoding } : {})
+					}
+				];
 			}
 		});
 	}

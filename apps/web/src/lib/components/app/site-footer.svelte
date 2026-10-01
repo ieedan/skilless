@@ -27,7 +27,7 @@
 		{
 			title: 'Cloud',
 			links: [
-				signedIn ? { label: 'Dashboard', href: '/skills' } : { label: 'Log in', href: '/login' },
+				signedIn ? { label: 'Dashboard', href: '/my-skills' } : { label: 'Log in', href: '/login' },
 				{ label: 'Sync', href: '/docs/cloud/sync' },
 				{ label: 'Cloud agents', href: '/docs/cloud/cloud-agents' }
 			]

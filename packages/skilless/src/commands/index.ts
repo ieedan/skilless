@@ -9,6 +9,7 @@ import { init } from '@/commands/init';
 import { install } from '@/commands/install';
 import { list } from '@/commands/list';
 import { migrate } from '@/commands/migrate';
+import { packs } from '@/commands/packs';
 import { remove } from '@/commands/remove';
 import { sync } from '@/commands/sync';
 import { update } from '@/commands/update';
@@ -26,6 +27,7 @@ export {
 	install,
 	list,
 	migrate,
+	packs,
 	remove,
 	sync,
 	update,

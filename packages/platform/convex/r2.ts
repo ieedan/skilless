@@ -25,9 +25,17 @@ export function fileUrl(key: string): string {
 	return `${env.R2_PUBLIC_URL}/${key}`;
 }
 
-/** A file to fetch. The URL is immutable: new contents always get a new one. */
-export type FileLink = { path: string; url: string };
+/**
+ * A file to fetch. The URL is immutable: new contents always get a new one.
+ * `binary` says to read it as bytes rather than text.
+ */
+export type FileLink = { path: string; url: string; binary?: boolean; size?: number };
 
 export function toLinks(rows: Doc<'skillFiles'>[]): FileLink[] {
-	return rows.map((row) => ({ path: row.path, url: fileUrl(row.key) }));
+	return rows.map((row) => ({
+		path: row.path,
+		url: fileUrl(row.key),
+		size: row.size,
+		...(row.binary ? { binary: true } : {})
+	}));
 }

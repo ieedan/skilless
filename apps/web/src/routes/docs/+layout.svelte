@@ -55,7 +55,7 @@
 					<GithubLogo />
 				</Button>
 				{#if data.signedIn}
-					<Button href="/skills" variant="outline" size="sm">Dashboard</Button>
+					<Button href="/my-skills" variant="outline" size="sm">Dashboard</Button>
 				{:else}
 					<Button href="/login" variant="outline" size="sm">Log in</Button>
 				{/if}

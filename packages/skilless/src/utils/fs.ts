@@ -112,9 +112,11 @@ export function walk(dir: string, ignore: (name: string) => boolean): string[] {
 	return out.sort();
 }
 
-export function writeFile(target: string, contents: string): void {
+/** Text is written as UTF-8; bytes as they are. */
+export function writeFile(target: string, contents: string | Buffer): void {
 	ensureDir(path.dirname(target));
-	fs.writeFileSync(target, contents, 'utf8');
+	if (typeof contents === 'string') fs.writeFileSync(target, contents, 'utf8');
+	else fs.writeFileSync(target, contents);
 }
 
 export function readJson<T>(target: string, fallback: T): T {

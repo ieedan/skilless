@@ -2,13 +2,24 @@ import { z } from 'zod';
 import { NotAuthenticatedError, OfflineError, SkillessError } from '@/utils/errors';
 import type { RemoteSkill, RemoteSkillWithFiles, SkillFile, SkillSource } from '@/utils/types';
 
-const fileSchema = z.object({ path: z.string(), contents: z.string() });
+/**
+ * What this CLI can handle, so the server can tell an older one to update
+ * rather than hand it binary files it would write out as base64 text.
+ */
+export const FEATURES = { 'X-Skilless-Features': 'binary' } as const;
+
+const fileSchema = z.object({
+	path: z.string(),
+	contents: z.string(),
+	encoding: z.literal('base64').optional()
+});
 
 const sourceSchema = z.object({
 	url: z.string(),
 	ref: z.string().optional(),
 	path: z.string(),
-	hash: z.string()
+	hash: z.string(),
+	pack: z.object({ url: z.string(), name: z.string().optional() }).optional()
 });
 
 const skillSchema = z.object({
@@ -18,8 +29,24 @@ const skillSchema = z.object({
 	updatedAt: z.number(),
 	global: z.boolean(),
 	// absent from servers that predate sources
-	source: sourceSchema.nullable().default(null)
+	source: sourceSchema.nullable().default(null),
+	// its address is `/skills/<id>`; absent from servers that predate addresses
+	id: z.string().nullable().default(null)
 });
+
+const packSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	description: z.string().nullable(),
+	public: z.boolean(),
+	skills: z.array(z.string()),
+	skillCount: z.number(),
+	countPartial: z.boolean(),
+	/** What `skilless add` takes. */
+	url: z.string()
+});
+
+export type RemotePack = z.infer<typeof packSchema>;
 
 const skillWithFilesSchema = skillSchema.extend({ files: z.array(fileSchema) });
 
@@ -88,6 +115,7 @@ export class ApiClient {
 					method,
 					headers: {
 						Authorization: `Bearer ${this.#token}`,
+						...FEATURES,
 						...(body === undefined ? {} : { 'Content-Type': 'application/json' })
 					},
 					body: body === undefined ? undefined : JSON.stringify(body),
@@ -179,6 +207,23 @@ export class ApiClient {
 
 	async deleteSkill(name: string): Promise<void> {
 		await this.#request('DELETE', `/skills/${encodeURIComponent(name)}`, z.unknown());
+	}
+
+	async listPacks(): Promise<RemotePack[]> {
+		return await this.#request('GET', '/packs', z.array(packSchema));
+	}
+
+	async createPack(pack: {
+		name: string;
+		description?: string;
+		skills?: string[];
+		public?: boolean;
+	}): Promise<RemotePack> {
+		return await this.#request('POST', '/packs', packSchema, pack);
+	}
+
+	async deletePack(id: string): Promise<void> {
+		await this.#request('DELETE', `/packs/${encodeURIComponent(id)}`, z.unknown());
 	}
 
 	async getBindings(key: string): Promise<RemoteSkillWithFiles[]> {
