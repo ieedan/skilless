@@ -10,7 +10,7 @@ import {
 	userAgentsSkills,
 	userClaudeSkills
 } from '@/utils/paths';
-import { writeSkill } from '@/utils/skill';
+import { SKILL_FILE, writeSkill } from '@/utils/skill';
 import type { SkillFile } from '@/utils/types';
 
 export type Materializable = { name: string; files?: SkillFile[]; editedAt?: number };
@@ -121,6 +121,27 @@ export function ownedSkills(target: Target): string[] {
 		.filter((name) => !name.startsWith('.'))
 		.filter((name) => isOurs(scope, name))
 		.sort();
+}
+
+/**
+ * Skills that sit in a project's skill directories that skilless did not put
+ * there — committed, vendored, or made by hand. Agents read them all the same.
+ */
+export function folderSkills(root: string): string[] {
+	const scope = projectScope(root);
+	const ours = new Set(ownedSkills(scope));
+	const names = new Set<string>();
+
+	for (const dir of [scope.agents, scope.claude]) {
+		if (!fsu.exists(dir)) continue;
+
+		for (const name of fs.readdirSync(dir)) {
+			if (name.startsWith('.') || ours.has(name)) continue;
+			if (fsu.exists(path.join(dir, name, SKILL_FILE))) names.add(name);
+		}
+	}
+
+	return [...names].sort();
 }
 
 /**

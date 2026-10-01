@@ -5,6 +5,10 @@ description: Every skilless command and option.
 
 Run `skilless <command> --help` for the same information in your terminal. Every command also takes `--cwd <path>` to run as if from another directory.
 
+Commands only read what is on this machine, so they finish right away and work offline. Anything they change is sent to skilless cloud in the background. Commands that read your library also take `-s, --sync` to check skilless cloud for changes made elsewhere first. See [sync](/docs/cloud/sync).
+
+skilless tells you when a new version is out. Set `NO_UPDATE_NOTIFIER=1` to turn that off.
+
 ## init
 
 Create your library at `~/.skilless`.
@@ -92,15 +96,17 @@ skilless delete <skills...>
 
 ## list
 
-List the skills in your library.
+List every skill this project's agents get, and how each one reaches them: ⊕ for a global skill, ⌂ for one that sits in the project's own skill folders. Outside a project, it lists your library.
 
 ```bash
 skilless list
 ```
 
-| Option                | Description                                                |
-| --------------------- | ---------------------------------------------------------- |
-| `-p, --project [key]` | List this project's skills, or another project's, instead. |
+| Option                | Description                            |
+| --------------------- | -------------------------------------- |
+| `-l, --lib`           | List every skill in your library.      |
+| `-d, --details`       | Show what each skill does.             |
+| `-p, --project [key]` | List another project's skills instead. |
 
 ## install
 

@@ -1,5 +1,6 @@
 import { add } from '@/commands/add';
 import { auth } from '@/commands/auth';
+import { background } from '@/commands/background';
 import { config } from '@/commands/config';
 import { create } from '@/commands/create';
 import { deleteCommand } from '@/commands/delete';
@@ -16,6 +17,7 @@ import { vendor } from '@/commands/vendor';
 export {
 	add,
 	auth,
+	background,
 	config,
 	create,
 	deleteCommand,

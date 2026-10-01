@@ -2,19 +2,27 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import * as fsu from '@/utils/fs';
-import { flush, readLibrary } from '@/utils/library';
+import { pushInBackground } from '@/utils/background';
+import { readLibrary } from '@/utils/library';
 import { skillDir } from '@/utils/paths';
 import { queueDelete } from '@/utils/pending';
 import { dropSources } from '@/utils/sources';
 import * as project from '@/utils/project';
-import { confirm, log, spin } from '@/utils/prompts';
-import { Remote } from '@/utils/remote';
+import { confirm, log } from '@/utils/prompts';
 import { readState, writeState } from '@/utils/state';
 import { VERSION } from '@/utils/version';
-import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
+import {
+	commonOptions,
+	defaultCommandOptionsSchema,
+	load,
+	parseOptions,
+	remoteIf,
+	tryCommand
+} from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
-	yes: z.boolean()
+	yes: z.boolean(),
+	sync: z.boolean().optional()
 });
 
 /**
@@ -25,17 +33,15 @@ export const deleteCommand = new Command('delete')
 	.description('Delete skills from your library, everywhere.')
 	.argument('<skills...>', 'Skills to delete.')
 	.addOption(commonOptions.yes)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (names: string[], raw) => {
 		const options = parseOptions(schema, raw);
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const remote = new Remote();
-			const library = await spin('Loading your library', async () => {
-				await flush(remote);
-				return readLibrary(remote);
-			});
+			const remote = remoteIf(options.sync);
+			const library = await load(remote, () => readLibrary(remote));
 			const known = new Set(library.entries.map((skill) => skill.name));
 			const unknown = names.filter((name) => !known.has(name));
 
@@ -78,12 +84,12 @@ export const deleteCommand = new Command('delete')
 			project.unmaterialize(root, names);
 			project.unmaterialize(project.userScope(), names);
 
-			await spin('Deleting from skilless.dev', () => flush(remote));
+			pushInBackground();
 
 			log.blank();
 			log.dim('Other checkouts will clean up on their next `skilless install`.');
 			log.dim('Restore at skilless.dev/skills within 30 days.');
 
-			remote.report();
+			remote?.report();
 		});
 	});

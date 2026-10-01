@@ -5,11 +5,12 @@ import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import * as fsu from '@/utils/fs';
 import * as git from '@/utils/git';
-import { flush, readLibrary, refreshGlobals, refreshProject } from '@/utils/library';
+import { pushInBackground } from '@/utils/background';
+import { readLibrary, refreshGlobals, refreshProject } from '@/utils/library';
 import { AGENTS_SKILLS, CLAUDE_SKILLS, userAgentsSkills, userClaudeSkills } from '@/utils/paths';
 import { queueBind, queueGlobal } from '@/utils/pending';
 import * as project from '@/utils/project';
-import { confirm, isInteractive, log, select, spin } from '@/utils/prompts';
+import { confirm, isInteractive, log, select } from '@/utils/prompts';
 import { Remote } from '@/utils/remote';
 import { isValidName, readSkill, SKILL_FILE, writeSkill } from '@/utils/skill';
 import { readState, writeState } from '@/utils/state';
@@ -19,7 +20,10 @@ import { VERSION } from '@/utils/version';
 import {
 	commonOptions,
 	defaultCommandOptionsSchema,
+	fetchFiles,
+	load,
 	parseOptions,
+	remoteIf,
 	tryCommand,
 	settleRefresh,
 	tilde
@@ -28,7 +32,8 @@ import {
 const schema = defaultCommandOptionsSchema.extend({
 	yes: z.boolean(),
 	user: z.boolean().optional(),
-	includeCommitted: z.boolean().optional()
+	includeCommitted: z.boolean().optional(),
+	sync: z.boolean().optional()
 });
 
 type Scope = 'project' | 'user';
@@ -122,13 +127,14 @@ export const migrate = new Command('migrate')
 		'Move skills committed to this repo too, without asking. Their removal from git is staged, not committed.'
 	)
 	.addOption(commonOptions.yes)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (wanted: string[], raw) => {
 		const options = parseOptions(schema, raw);
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const remote = new Remote();
+			let remote = remoteIf(options.sync);
 			const root = project.projectRoot(options.cwd);
 			const key = git.projectKey(options.cwd);
 
@@ -191,10 +197,7 @@ export const migrate = new Command('migrate')
 
 			/* ------------------------------------------------------------ plan */
 
-			const current = await spin('Loading your library', async () => {
-				await flush(remote);
-				return readLibrary(remote);
-			});
+			const current = await load(remote, () => readLibrary(remote));
 			const library = new Map(current.entries.map((e) => [e.name, e]));
 
 			// a skill found at both levels is planned twice; ask about it once
@@ -247,11 +250,7 @@ export const migrate = new Command('migrate')
 				// whichever side loses, the library's files are needed: to keep or to stash
 				const files =
 					existing.local?.files ??
-					(
-						await spin(`Fetching ${name} from your library`, () =>
-							remote.try((api) => api.getSkill(name))
-						)
-					)?.files;
+					(await fetchFiles((remote ??= new Remote()), name, `Fetching ${name} from your library`));
 				if (!files) {
 					log.warn(`Skipped ${name}: could not fetch the one in your library.`);
 					return null;
@@ -406,20 +405,8 @@ export const migrate = new Command('migrate')
 				writeSkill(skill.name, skill.files, skill.editedAt);
 				if (adopted) continue;
 
-				const pushed = await spin(`Saving ${skill.name} to your library`, () =>
-					remote.try((api) => api.putSkill(skill.name, skill.files, skill.editedAt))
-				);
-
-				if (pushed) {
-					state.skills[skill.name] = {
-						contentHash: skill.contentHash,
-						editedAt: skill.editedAt,
-						syncedAt: Date.now()
-					};
-				} else {
-					// unknown to state.json, so the next sync pushes it
-					delete state.skills[skill.name];
-				}
+				// unknown to state.json, so the background push sends it
+				delete state.skills[skill.name];
 			}
 
 			writeState(state);
@@ -447,7 +434,7 @@ export const migrate = new Command('migrate')
 
 			if (globals.length > 0) queueGlobal(globals, true);
 			if (key && bound.length > 0) queueBind(key, bound);
-			await spin('Saving to skilless.dev', () => flush(remote));
+			pushInBackground();
 
 			// a skill already in the library with the same contents was only linked,
 			// and saying it was moved in would hide which ones were already there
@@ -487,17 +474,11 @@ export const migrate = new Command('migrate')
 			// the originals are gone, so link everything back — a global lands
 			// at the user level, once, right where it was before
 			if (key) {
-				await settleRefresh(
-					await spin('Updating this project', () => refreshProject(remote, root, key)),
-					{ yes: options.yes }
-				);
+				await settleRefresh(await refreshProject(null, root, key), { yes: options.yes });
 			} else if (globals.length > 0) {
-				await settleRefresh(
-					await spin('Linking your global skills', () => refreshGlobals(remote)),
-					{ yes: options.yes }
-				);
+				await settleRefresh(await refreshGlobals(null), { yes: options.yes });
 			}
 
-			remote.report();
+			remote?.report();
 		});
 	});

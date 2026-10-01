@@ -25,10 +25,59 @@ type ListPrompt = {
 	index: number;
 	choices: { index: number }[];
 	visible: { index: number }[];
+	focused: { index: number };
+	isDisabled: (choice?: { index: number }) => boolean;
 	render: () => unknown;
 	scrollUp: () => unknown;
 	scrollDown: () => unknown;
 };
+
+/** Moves the focus one place, stopping at the ends instead of wrapping. */
+function step(prompt: ListPrompt, direction: -1 | 1): void {
+	if (direction === -1) {
+		if (prompt.index > 0) prompt.index--;
+		else prompt.scrollUp();
+	} else if (prompt.index < prompt.visible.length - 1) prompt.index++;
+	else prompt.scrollDown();
+}
+
+/**
+ * Scrolls the view one row while the focus stays on the same choice, so
+ * disabled choices past the last one that can be picked can still be read.
+ * Does nothing once that end of the list is showing.
+ */
+function reveal(prompt: ListPrompt, direction: -1 | 1): unknown {
+	const { choices } = prompt;
+
+	if (direction === 1) {
+		if (prompt.index === 0 || prompt.visible.at(-1)?.index === choices.length - 1) return;
+		prompt.choices = [...choices.slice(1), choices[0]!];
+		prompt.index--;
+	} else {
+		if (prompt.index === prompt.visible.length - 1 || choices[0]?.index === 0) return;
+		prompt.choices = [choices.at(-1)!, ...choices.slice(0, -1)];
+		prompt.index++;
+	}
+
+	return prompt.render();
+}
+
+/**
+ * Moves to the next choice that can be picked, skipping disabled ones. With
+ * none left that way, the view still scrolls to show what is there.
+ */
+function move(prompt: ListPrompt, direction: -1 | 1): unknown {
+	const from = prompt.focused.index;
+	const ahead = prompt.choices.some(
+		(choice) => (choice.index - from) * direction > 0 && !prompt.isDisabled(choice)
+	);
+	if (!ahead) return reveal(prompt, direction);
+
+	do step(prompt, direction);
+	while (prompt.isDisabled());
+
+	return prompt.render();
+}
 
 /**
  * Enquirer scrolls a long list by rotating it, so moving past either end wraps
@@ -38,22 +87,10 @@ type ListPrompt = {
 const list = {
 	limit: 10,
 	up(this: ListPrompt) {
-		if (this.index > 0) {
-			this.index--;
-			return this.render();
-		}
-
-		if (this.choices[0]?.index === 0) return;
-		return this.scrollUp();
+		return move(this, -1);
 	},
 	down(this: ListPrompt) {
-		if (this.index < this.visible.length - 1) {
-			this.index++;
-			return this.render();
-		}
-
-		if (this.visible.at(-1)?.index === this.choices.length - 1) return;
-		return this.scrollDown();
+		return move(this, 1);
 	}
 };
 
@@ -113,7 +150,7 @@ export async function input(message: string, opts: InputOptions = {}): Promise<s
 export async function multiselect(
 	message: string,
 	/** A `disabled` choice is shown dimmed, with the reason beside it, and cannot be picked. */
-	choices: { name: string; hint?: string; disabled?: string }[]
+	choices: { name: string; message?: string; hint?: string; disabled?: string | boolean }[]
 ): Promise<string[]> {
 	if (choices.every((choice) => choice.disabled)) return [];
 
@@ -226,11 +263,10 @@ const brand = (text: string): string =>
 const MAX_WIDTH = 80;
 
 /**
- * Breaks `words` into lines that fit the terminal, each one indented to sit
- * under the text of a `·` line rather than its marker.
+ * Breaks `words` into lines that fit the terminal, each one indented — by
+ * default to sit under the text of a `·` line rather than its marker.
  */
-function wrap(words: string[], separator: string): string {
-	const indent = '  ';
+export function wrap(words: string[], separator: string, indent = '  '): string {
 	const width = Math.min(process.stdout.columns || MAX_WIDTH, MAX_WIDTH) - indent.length;
 	const lines: string[] = [];
 	let line = '';
@@ -264,6 +300,10 @@ export const log = {
 	},
 	error(message: string) {
 		write(process.stderr, `${pc.red('✖')} ${message}\n`);
+	},
+	/** A line as is, for output that does its own coloring. */
+	raw(message: string) {
+		write(process.stdout, `${message}\n`);
 	},
 	dim(message: string) {
 		write(process.stdout, `${pc.gray(message)}\n`);

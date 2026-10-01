@@ -1,3 +1,4 @@
+import { pushInBackground } from '@/utils/background';
 import { cacheLibrary, cacheProject, readCache } from '@/utils/cache';
 import { installResolved, linkGlobals, shouldCopy } from '@/utils/install';
 import { flushPending, type Pending, readPending } from '@/utils/pending';
@@ -39,9 +40,11 @@ export async function flush(remote: Remote): Promise<void> {
  * Your library as best this machine can tell: the skills on disk, plus what
  * the server has — fresh when it answers, from the cache when it does not —
  * with any change still waiting to reach the server applied on top.
+ *
+ * A null `remote` reads only what is on this machine.
  */
-export async function readLibrary(remote: Remote): Promise<Library> {
-	const fetched = await remote.try((api) => api.listSkills());
+export async function readLibrary(remote: Remote | null): Promise<Library> {
+	const fetched = await remote?.try((api) => api.listSkills());
 	if (fetched) {
 		cacheLibrary(fetched);
 		adoptSources(fetched);
@@ -75,9 +78,9 @@ export async function readLibrary(remote: Remote): Promise<Library> {
 	return { entries, live: fetched !== undefined };
 }
 
-/** Names of the skills bound to a project, globals not included. */
-export async function readBindings(remote: Remote, key: string): Promise<string[]> {
-	const fetched = await remote.try((api) => api.getBindings(key));
+/** Names of the skills bound to a project, globals not included. A null `remote` reads the cache. */
+export async function readBindings(remote: Remote | null, key: string): Promise<string[]> {
+	const fetched = await remote?.try((api) => api.getBindings(key));
 	if (fetched) cacheProject(key, fetched);
 
 	const bound = fetched
@@ -124,12 +127,12 @@ export type ProjectRefresh = {
  * empty cache must never read as "this project has nothing".
  */
 export async function refreshProject(
-	remote: Remote,
+	remote: Remote | null,
 	root: string,
 	key: string,
 	opts: { copy?: boolean } = {}
 ): Promise<ProjectRefresh> {
-	const fetched = await remote.try((api) => api.getBindings(key));
+	const fetched = await remote?.try((api) => api.getBindings(key));
 
 	if (fetched) {
 		cacheProject(key, fetched);
@@ -204,7 +207,7 @@ function refreshOffline(
  * this machine yet waits for the next sync.
  */
 export async function refreshGlobals(
-	remote: Remote
+	remote: Remote | null
 ): Promise<ScopeRefresh & { missing: string[] }> {
 	const library = await readLibrary(remote);
 	const globals = library.entries.filter((entry) => entry.global);
@@ -224,18 +227,17 @@ export async function refreshGlobals(
 }
 
 /**
- * Writes skills into `~/.skilless/skills` and pushes each one, replacing
- * whatever of the same name was there. Returns their names, in order.
+ * Writes skills into `~/.skilless/skills`, replacing whatever of the same name
+ * was there, and has them pushed in the background. Returns their names, in order.
  *
  * A skill's source is set from `sources`; one saved without an entry there is
  * no longer the repo's copy, so any source it had is forgotten.
  */
-export async function saveToLibrary(
-	remote: Remote,
+export function saveToLibrary(
 	skills: LocalSkill[],
 	existing: Map<string, LibraryEntry>,
 	sources: Map<string, SkillSource> = new Map()
-): Promise<string[]> {
+): string[] {
 	const state = readState();
 
 	for (const skill of skills) {
@@ -243,16 +245,9 @@ export async function saveToLibrary(
 
 		writeSkill(skill.name, skill.files, skill.editedAt);
 
-		const pushed = await remote.try((api) => api.putSkill(skill.name, skill.files, skill.editedAt));
 		const overwritten = existing.get(skill.name)?.remote;
 
-		if (pushed) {
-			state.skills[skill.name] = {
-				contentHash: skill.contentHash,
-				editedAt: skill.editedAt,
-				syncedAt: Date.now()
-			};
-		} else if (overwritten) {
+		if (overwritten) {
 			// record the copy being replaced as the last synced one, so the next
 			// sync reads this as an edit made here and pushes it — rather than
 			// a conflict it might settle the other way
@@ -268,9 +263,35 @@ export async function saveToLibrary(
 	}
 
 	writeState(state);
-
-	// the sources can only go once the skills they describe are there
-	await flush(remote);
+	pushInBackground();
 
 	return skills.map((skill) => skill.name);
+}
+
+/**
+ * Brings skills that are only on the server down into the store, all at once,
+ * so they can be linked. Returns the ones that could not be fetched.
+ */
+export async function fetchMissing(remote: Remote, names: string[]): Promise<string[]> {
+	const fetched = await Promise.all(names.map((name) => remote.try((api) => api.getSkill(name))));
+
+	const state = readState();
+	const failed: string[] = [];
+
+	fetched.forEach((skill, i) => {
+		if (!skill) {
+			failed.push(names[i]!);
+			return;
+		}
+
+		writeSkill(skill.name, skill.files, skill.editedAt);
+		state.skills[skill.name] = {
+			contentHash: skill.contentHash,
+			editedAt: skill.editedAt,
+			syncedAt: Date.now()
+		};
+	});
+
+	writeState(state);
+	return failed;
 }
