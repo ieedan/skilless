@@ -3,11 +3,19 @@ export type AppUser = {
 	name: string;
 	/** Secondary line under the name — the email we have, shown verbatim. Empty when hidden. */
 	subtitle: string;
-	/** What the generated avatar is derived from. */
+	/** What the generated avatar is derived from, for an account with no picture. */
 	seed: string;
+	/** The GitHub avatar better-auth copied at sign in. */
+	image: string | null;
 };
 
-type AuthUser = { name?: string | null; email?: string | null; _id?: string; id?: string } | null;
+type AuthUser = {
+	name?: string | null;
+	email?: string | null;
+	image?: string | null;
+	_id?: string;
+	id?: string;
+} | null;
 
 /**
  * better-auth's GitHub provider gives us a display name and an email, but not
@@ -21,5 +29,5 @@ export function toAppUser(user: AuthUser, { hideEmail = false } = {}): AppUser {
 	const name = user?.name?.trim() || (!hideEmail && user?.email?.split('@')[0]) || 'Your account';
 	const subtitle = hideEmail ? '' : (user?.email ?? '');
 
-	return { name, subtitle, seed };
+	return { name, subtitle, seed, image: user?.image ?? null };
 }

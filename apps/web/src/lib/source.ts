@@ -1,7 +1,64 @@
+import { cliAddress, parseAddress, shortAddress } from '$lib/pack';
 import { projectParts, type ProjectParts } from '$lib/project';
 
-/** `skills.source`: the repo a skill was copied from by `skilless add <repo>`. */
-export type SkillSource = { url: string; ref?: string; path: string };
+/**
+ * `skills.source`: where a skill was copied from by `skilless add` — a repo,
+ * or a skilless address — and the pack that last added it, if one did.
+ */
+export type SkillSource = {
+	url: string;
+	ref?: string;
+	path: string;
+	/** The upstream contentHash as of the last add or update. */
+	hash?: string;
+	pack?: { url: string; name?: string };
+};
+
+/** Where a skill came from, as its row and page show it. */
+export type Origin =
+	| { kind: 'pack'; label: string; href?: string }
+	| { kind: 'skill'; label: string; href: string }
+	| ({ kind: 'repo' } & SourceParts);
+
+/** A link to somewhere on this site goes there directly, rather than out and back in. */
+function local(url: string): string {
+	try {
+		const parsed = new URL(url.includes('://') ? url : `https://${url}`);
+		return typeof location !== 'undefined' && parsed.origin === location.origin
+			? parsed.pathname
+			: parsed.href;
+	} catch {
+		return url;
+	}
+}
+
+/**
+ * The pack wins: a skill a pack added shows the pack, since that is how it
+ * got here, even though updates come from the repo underneath.
+ */
+export function originOf(source: SkillSource): Origin | null {
+	if (source.pack) {
+		const { url, name } = source.pack;
+		// a pack file on disk has no page to link to
+		const remote = /^https?:\/\//i.test(url);
+		return {
+			kind: 'pack',
+			label: name ?? shortAddress(url),
+			href: remote ? local(url) : undefined
+		};
+	}
+
+	const address = parseAddress(source.url);
+	if (address?.kind === 'skill') {
+		const href = source.url.startsWith('@')
+			? `/skills/${address.username}/${address.name}`
+			: local(source.url);
+		return { kind: 'skill', label: cliAddress(address), href };
+	}
+
+	const parts = sourceParts(source);
+	return parts && { kind: 'repo', ...parts };
+}
 
 export type SourceParts = ProjectParts & {
 	/** Where the skill lives upstream, when the host has a web view we can link to. */

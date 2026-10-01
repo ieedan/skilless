@@ -10,7 +10,7 @@ import {
 	userAgentsSkills,
 	userClaudeSkills
 } from '@/utils/paths';
-import { SKILL_FILE, writeSkill } from '@/utils/skill';
+import { fileBytes, SKILL_FILE, writeSkill } from '@/utils/skill';
 import type { SkillFile } from '@/utils/types';
 
 export type Materializable = { name: string; files?: SkillFile[]; editedAt?: number };
@@ -265,7 +265,7 @@ function write(scope: Scope, skill: Materializable, opts: { copy: boolean }): vo
 	if (opts.copy) {
 		fsu.ensureDir(agents);
 		for (const file of skill.files ?? []) {
-			fsu.writeFile(path.join(agents, file.path), file.contents);
+			fsu.writeFile(path.join(agents, file.path), fileBytes(file));
 		}
 	} else {
 		const store = skillDir(skill.name);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import Snippet from '$lib/components/app/snippet.svelte';
 	import { APP_NAME } from '$lib/constants';
 
 	let { data, form } = $props();
@@ -53,8 +54,7 @@
 		<p class="max-w-md text-sm text-neutral-400">
 			Your browser wouldn't let this page reach the CLI, so copy the token instead:
 		</p>
-		<pre
-			class="w-full max-w-md overflow-x-auto rounded-md border border-neutral-800 bg-neutral-900 p-3 text-left text-xs">skilless auth --token {form.token}</pre>
+		<Snippet command="skilless auth --token {form.token}" class="w-full max-w-md text-left" />
 	{:else if status === 'sending'}
 		<p class="text-sm text-neutral-400">Sending the token to your terminal…</p>
 	{:else}

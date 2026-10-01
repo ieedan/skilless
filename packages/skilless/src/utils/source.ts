@@ -33,6 +33,7 @@ export function isSource(arg: string): boolean {
  * Reads the same shapes the `skills` CLI does:
  *
  * - `owner/repo`, `owner/repo/path/to/skills`, `owner/repo@skill` — GitHub
+ * - `github.com/owner/repo/path/to/skills` — any host, as a pack file writes it
  * - `github:owner/repo`, `gitlab:group/repo`
  * - `https://github.com/owner/repo/tree/<ref>/<path>`
  * - `https://<gitlab host>/group/sub/repo/-/tree/<ref>/<path>`
@@ -63,6 +64,9 @@ export function parseSource(input: string): Source {
 
 	if (/^https?:\/\//i.test(rest)) {
 		source = parseHttp(rest, ref);
+	} else if (/^[^/@:\s]+\.[^/@:\s]+\//.test(rest)) {
+		// `github.com/owner/repo`: an owner never has a dot in it, so this is a host
+		source = parseHttp(`https://${rest}`, ref);
 	} else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rest) || /^[^@/\s]+@[^:/\s]+:/.test(rest)) {
 		// ssh://, git://, file://, or scp-like git@host:path
 		source = { url: rest, ref };
@@ -91,10 +95,12 @@ function parseHttp(input: string, ref: string | undefined): Omit<Source, 'label'
 		const clone = `${origin}/${owner}/${repo?.replace(/\.git$/, '')}.git`;
 
 		if ((marker === 'tree' || marker === 'blob') && treeRef) {
-			return { url: clone, ref: treeRef, subpath: sub.join('/') || undefined };
+			return { url: clone, ref: ref ?? treeRef, subpath: sub.join('/') || undefined };
 		}
 
-		return { url: clone, ref };
+		// anything past the repo is a path in it, at the default branch
+		const rest = [marker, treeRef, ...sub].filter(Boolean).join('/');
+		return { url: clone, ref, subpath: rest || undefined };
 	}
 
 	// GitLab, on gitlab.com or self hosted, marks the end of the repo path with `/-/`

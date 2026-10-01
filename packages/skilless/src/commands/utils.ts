@@ -3,12 +3,14 @@ import { Option } from 'commander';
 import path from 'pathe';
 import pc from 'picocolors';
 import { z } from 'zod';
+import { addressLabel, addressOf } from '@/utils/address';
 import { ApiClient } from '@/utils/api';
 import { getApiUrl, getToken } from '@/utils/auth';
 import type { LibraryEntry } from '@/utils/library';
 import { NotAProjectError, NotAuthenticatedError, SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
 import { shouldCopy } from '@/utils/install';
+import { packLabel } from '@/utils/pack';
 import * as project from '@/utils/project';
 import type { Skipped } from '@/utils/project';
 import { flush } from '@/utils/library';
@@ -100,6 +102,11 @@ export async function load<T>(remote: Remote | null, run: () => Promise<T>): Pro
 	});
 }
 
+/** A repository as `github.com/owner/repo`, or an address without its scheme. */
+function sourceLabel(url: string): string {
+	return addressOf(url) ? addressLabel(url) : (git.normalizeRemote(url) ?? url);
+}
+
 /**
  * The gray details beside a skill wherever it is listed: where it came from,
  * and whether it is missing here or has changes that haven't been sent.
@@ -108,8 +115,8 @@ export async function load<T>(remote: Remote | null, run: () => Promise<T>): Pro
 export function skillDetails(skill: LibraryEntry, synced = getToken() !== null): string[] {
 	const details: string[] = [];
 
-	if (skill.source)
-		details.push(`from ${git.normalizeRemote(skill.source.url) ?? skill.source.url}`);
+	if (skill.source?.pack) details.push(`from ${packLabel(skill.source.pack)}`);
+	else if (skill.source) details.push(`from ${sourceLabel(skill.source.url)}`);
 	if (!skill.local) details.push('not on this machine');
 	else if (synced && skill.unsynced) details.push('not synced');
 

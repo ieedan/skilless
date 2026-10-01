@@ -49,4 +49,4 @@ To choose instead, pass `--push` to keep the copy on this machine or `--pull` to
 
 ## In the browser
 
-Once you're signed in, [skilless.dev](/skills) shows your library. You can read and edit skills there, download them, restore ones you deleted in the last 30 days, and see your projects and the skills added to each.
+Once you're signed in, [skilless.dev](/my-skills) shows your library. You can read and edit skills there, download them, restore ones you deleted in the last 30 days, and see your projects and the skills added to each.

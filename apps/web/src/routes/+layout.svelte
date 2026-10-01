@@ -11,6 +11,7 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { APP_DESCRIPTION, APP_NAME } from '$lib/constants';
+	import { onListKeydown } from '$lib/list-nav';
 
 	let { children, data } = $props();
 
@@ -70,6 +71,9 @@
 		<meta name="theme-color" content={themeColor} />
 	{/if}
 </svelte:head>
+
+<!-- arrow keys through whichever lists the page has -->
+<svelte:document onkeydown={onListKeydown} />
 
 <ModeWatcher />
 <Toaster position="bottom-right" />

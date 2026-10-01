@@ -5,7 +5,9 @@
 	import type { AppUser } from '$lib/user';
 	import Avatar from './avatar.svelte';
 	import { AccountActions, THEMES, type Theme } from './account-actions.svelte';
+	import { page } from '$app/state';
 	import RiLogoutBoxRLine from 'remixicon-svelte/icons/logout-box-r-line';
+	import RiUserLine from 'remixicon-svelte/icons/user-line';
 
 	let { user, hideEmail }: { user: AppUser; hideEmail: boolean } = $props();
 
@@ -17,12 +19,12 @@
 		class="shrink-0 rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 		aria-label="Account"
 	>
-		<Avatar seed={user.seed} size={30} />
+		<Avatar seed={user.seed} src={user.image} size={30} />
 	</DropdownMenu.Trigger>
 
 	<DropdownMenu.Content align="end" class="w-60">
 		<div class="flex items-center gap-2.5 px-1.5 py-1.5">
-			<Avatar seed={user.seed} size={32} />
+			<Avatar seed={user.seed} src={user.image} size={32} />
 			<div class="flex min-w-0 flex-col">
 				<span class="truncate text-sm text-popover-foreground">{user.name}</span>
 				{#if user.subtitle}
@@ -32,6 +34,20 @@
 		</div>
 
 		<DropdownMenu.Separator />
+
+		<!-- your public page: what everyone sees of your skills and packs -->
+		{#if page.data.username}
+			<DropdownMenu.Item>
+				{#snippet child({ props })}
+					<a {...props} href="/skills/{page.data.username}">
+						<RiUserLine />
+						Profile
+					</a>
+				{/snippet}
+			</DropdownMenu.Item>
+
+			<DropdownMenu.Separator />
+		{/if}
 
 		<!--
 			The three options are still menu items, so arrow keys reach them like

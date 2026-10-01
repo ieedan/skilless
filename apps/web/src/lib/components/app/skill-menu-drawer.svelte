@@ -10,6 +10,13 @@
 	import RiFileCopyLine from 'remixicon-svelte/icons/file-copy-line';
 	import RiDownload2Line from 'remixicon-svelte/icons/download-2-line';
 	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiLink from 'remixicon-svelte/icons/link';
+	import RiLockLine from 'remixicon-svelte/icons/lock-line';
+	import RiShareLine from 'remixicon-svelte/icons/share-line';
+	import RiRefreshLine from 'remixicon-svelte/icons/refresh-line';
+	import { imports } from '$lib/imports.svelte';
+	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
+	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 
 	let {
 		skill,
@@ -28,7 +35,7 @@
 
 	let open = $state(false);
 
-	const base = $derived(`/skills/${encodeURIComponent(skill.name)}`);
+	const base = $derived(`/my-skills/${encodeURIComponent(skill.name)}`);
 	const main = $derived(skill.soleFile ?? 'SKILL.md');
 
 	/** Close first so the drawer is out of the way of whatever the action opens. */
@@ -71,14 +78,55 @@
 		</Drawer.Item>
 		<Drawer.Item
 			onclick={run(() =>
-				downloadZip(`/skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)
+				downloadZip(`/my-skills.zip?name=${encodeURIComponent(skill.name)}`, skill.name)
 			)}
 		>
 			<RiDownload2Line />
 			Download
 		</Drawer.Item>
+		{#if actions.canUpdate(skill)}
+			<Drawer.Item
+				disabled={imports.isUpdating(skill.name)}
+				onclick={run(() => actions.updateFromSource(skill))}
+			>
+				<RiRefreshLine />
+				Update from source
+			</Drawer.Item>
+		{/if}
 
 		<Drawer.Separator />
+
+		<Drawer.Item onclick={run(() => actions.copyLink(skill))}>
+			<RiLink />
+			Copy link
+		</Drawer.Item>
+		{#if actions.isPublic(skill)}
+			<Drawer.Item onclick={run(() => actions.setPublic(skill, false))}>
+				<RiLockLine />
+				Make private
+			</Drawer.Item>
+		{:else if actions.canPublish(skill)}
+			<!-- a copy from somewhere else stays private: only originals are shared -->
+			<Drawer.Item onclick={run(() => actions.setPublic(skill, true))}>
+				<RiShareLine />
+				Make public
+			</Drawer.Item>
+		{/if}
+
+		<Drawer.Separator />
+
+		<!-- global: in every project, bound or not; local: only the projects it is added to -->
+		{#if actions.isGlobal(skill)}
+			<Drawer.Item onclick={run(() => actions.setGlobal(skill, false))}>
+				<RiGitRepositoryLine />
+				Make local
+			</Drawer.Item>
+		{:else}
+			<Drawer.Item onclick={run(() => actions.setGlobal(skill, true))}>
+				<RiGlobalLine />
+				Make global
+			</Drawer.Item>
+		{/if}
 
 		<ProjectSubdrawer
 			{projects}

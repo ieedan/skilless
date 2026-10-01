@@ -5,7 +5,9 @@
 	import type { AppUser } from '$lib/user';
 	import Avatar from './avatar.svelte';
 	import { AccountActions, THEMES } from './account-actions.svelte';
+	import { page } from '$app/state';
 	import RiLogoutBoxRLine from 'remixicon-svelte/icons/logout-box-r-line';
+	import RiUserLine from 'remixicon-svelte/icons/user-line';
 
 	let { user, hideEmail }: { user: AppUser; hideEmail: boolean } = $props();
 
@@ -17,12 +19,12 @@
 		class="shrink-0 rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 		aria-label="Account"
 	>
-		<Avatar seed={user.seed} size={30} />
+		<Avatar seed={user.seed} src={user.image} size={30} />
 	</Drawer.Trigger>
 
 	<Drawer.Content>
 		<Drawer.Header class="flex-row items-center gap-3">
-			<Avatar seed={user.seed} size={36} />
+			<Avatar seed={user.seed} src={user.image} size={36} />
 			<div class="flex min-w-0 flex-col">
 				<Drawer.Title class="truncate">{user.name}</Drawer.Title>
 				{#if user.subtitle}
@@ -34,6 +36,16 @@
 		</Drawer.Header>
 
 		<Drawer.Separator />
+
+		<!-- your public page: what everyone sees of your skills and packs -->
+		{#if page.data.username}
+			<Drawer.Item href="/skills/{page.data.username}">
+				<RiUserLine />
+				Profile
+			</Drawer.Item>
+
+			<Drawer.Separator />
+		{/if}
 
 		<div class="flex items-center justify-between gap-3 px-2 py-2">
 			<span id="drawer-theme-label" class="text-sm">Theme</span>

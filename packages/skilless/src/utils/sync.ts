@@ -3,7 +3,7 @@ import type { ApiClient } from '@/utils/api';
 import * as fsu from '@/utils/fs';
 import { CONFLICTS_DIR, skillDir } from '@/utils/paths';
 import * as prompts from '@/utils/prompts';
-import { writeSkill } from '@/utils/skill';
+import { fileBytes, writeSkill } from '@/utils/skill';
 import type { State } from '@/utils/state';
 import type { LocalSkill, RemoteSkill, SkillFile } from '@/utils/types';
 
@@ -87,7 +87,7 @@ export function stashFiles(name: string, label: string, files: SkillFile[]): str
 	const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 	const dir = path.join(CONFLICTS_DIR, name, `${stamp}-${label}`);
 
-	for (const file of files) fsu.writeFile(path.join(dir, file.path), file.contents);
+	for (const file of files) fsu.writeFile(path.join(dir, file.path), fileBytes(file));
 
 	return dir;
 }

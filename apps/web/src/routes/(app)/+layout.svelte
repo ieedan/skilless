@@ -16,7 +16,8 @@
 	const headerActions = provideHeaderActions();
 
 	const SECTIONS = [
-		{ href: '/skills', label: 'Skills' },
+		{ href: '/my-skills', label: 'Skills' },
+		{ href: '/my-packs', label: 'Packs' },
 		{ href: '/projects', label: 'Projects' },
 		{ href: '/settings', label: 'Settings' }
 	];
@@ -61,6 +62,15 @@
 			];
 		}
 
+		// A pack's address is its slug, so it reads by the name its page loaded.
+		if (section === 'my-packs' && rest.length > 0) {
+			const view = (page.data as { view?: { data?: { pack: { name: string } } | null } }).view;
+			return [
+				{ label: sectionLabel('my-packs'), href: '/my-packs' },
+				{ label: view?.data?.pack.name ?? 'Pack', href: `/my-packs/${rest[0]}` }
+			];
+		}
+
 		return [
 			{ label: sectionLabel(section), href: `/${section}` },
 			...rest.map((segment, i) => {
@@ -69,14 +79,14 @@
 				// Inside a skill, a segment with an extension is a file and anything
 				// else is a directory. `rest[0]` is the skill itself, so it gets
 				// neither. Good enough for an icon; the route does the real resolving.
-				const inSkill = section === 'skills' && i > 0;
+				const inSkill = section === 'my-skills' && i > 0;
 				const file = inSkill && label.includes('.') ? iconFor(label) : undefined;
 				const folder = inSkill && !label.includes('.');
 
 				return {
 					label,
 					href: `/${[section, ...rest.slice(0, i + 1)].join('/')}`,
-					mono: section === 'skills' && i === 0,
+					mono: section === 'my-skills' && i === 0,
 					icon: file?.icon ?? (folder ? RiFolder3Fill : undefined),
 					iconClass: file?.class ?? (folder ? 'text-sky-500 dark:text-sky-300/80' : undefined)
 				};
@@ -159,7 +169,7 @@
 				</div>
 
 				<a
-					href="/skills"
+					href="/my-skills"
 					class="absolute top-2 left-0 flex h-8 translate-y-(--travel) items-center rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 				>
 					<Logo foldable />

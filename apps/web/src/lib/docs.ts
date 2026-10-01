@@ -33,6 +33,7 @@ export const nav: { title: string; pages: { slug: string; title: string }[] }[] 
 		title: 'Guides',
 		pages: [
 			{ slug: 'adding-skills', title: 'Adding skills' },
+			{ slug: 'packs', title: 'Packs' },
 			{ slug: 'global-skills', title: 'Global skills' },
 			{ slug: 'migrating', title: 'Moving existing skills in' },
 			{ slug: 'vendoring', title: 'Committing a skill' }

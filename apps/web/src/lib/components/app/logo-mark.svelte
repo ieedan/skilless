@@ -1,0 +1,34 @@
+<script lang="ts">
+	import type { SVGAttributes } from 'svelte/elements';
+
+	/**
+	 * The mark alone: the struck S of the wordmark, as in the favicon, drawn in
+	 * the current text color so it sits beside text like any icon. The rule is
+	 * cut out of the S rather than drawn over it, so it reads on any background.
+	 */
+	let { class: className, ...rest }: SVGAttributes<SVGSVGElement> = $props();
+
+	// one mask per instance: ids are page wide
+	const id = $props.id();
+	const cut = `logo-mark-${id}`;
+</script>
+
+<svg
+	viewBox="-28.3 -7.8 160 160"
+	fill="currentColor"
+	aria-hidden="true"
+	class={className}
+	{...rest}
+>
+	<defs>
+		<mask id={cut} maskUnits="userSpaceOnUse" x="-28.3" y="-7.8" width="160" height="160">
+			<rect x="-28.3" y="-7.8" width="160" height="160" fill="#fff" />
+			<rect x="-28.3" y="53.21" width="160" height="37.98" fill="#000" />
+		</mask>
+	</defs>
+	<path
+		mask="url(#{cut})"
+		d="M51.4 144.4L51.4 144.4Q33.4 144.4 20.7 138.2Q8 132 0 121.8L0 121.8L15.8 105.4Q23.6 114.4 32.7 118.7Q41.8 123 52.2 123L52.2 123Q64.2 123 70.6 117.6Q77 112.2 77 102L77 102Q77 93.6 72.2 89.3Q67.4 85 56 83.2L56 83.2L41.2 80.8Q21.8 77.4 13.6 66.7Q5.4 56 5.4 41.4L5.4 41.4Q5.4 21.4 18.4 10.7Q31.4 0 54.4 0L54.4 0Q70.8 0 82.7 5.2Q94.6 10.4 101.8 19.4L101.8 19.4L86.4 35.8Q80.8 29.2 73 25.3Q65.2 21.4 54.6 21.4L54.6 21.4Q31.8 21.4 31.8 40.2L31.8 40.2Q31.8 48.2 36.6 52.4Q41.4 56.6 53 58.6L53 58.6L67.6 61.2Q85.8 64.6 94.6 74.6Q103.4 84.6 103.4 100.2L103.4 100.2Q103.4 110 100 118.1Q96.6 126.2 90 132.1Q83.4 138 73.7 141.2Q64 144.4 51.4 144.4"
+	/>
+	<rect x="-20" y="63.18" width="143.4" height="18.05" />
+</svg>

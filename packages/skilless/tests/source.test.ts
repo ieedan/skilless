@@ -29,6 +29,19 @@ describe('parseSource', () => {
 		expect(parseSource('owner/repo#v2').ref).toBe('v2');
 	});
 
+	it('reads a host-prefixed address, as a pack file writes it', () => {
+		expect(parseSource('github.com/ieedan/skills/.agents/skills/test')).toMatchObject({
+			url: 'https://github.com/ieedan/skills.git',
+			subpath: '.agents/skills/test',
+			label: 'github.com/ieedan/skills'
+		});
+		expect(parseSource('github.com/owner/repo#v2')).toMatchObject({
+			url: 'https://github.com/owner/repo.git',
+			ref: 'v2',
+			subpath: undefined
+		});
+	});
+
 	it('reads GitHub tree URLs', () => {
 		const source = parseSource('https://github.com/owner/repo/tree/main/skills/foo');
 

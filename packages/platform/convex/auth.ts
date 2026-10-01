@@ -3,7 +3,7 @@ import { convex } from '@convex-dev/better-auth/plugins';
 import { betterAuth } from 'better-auth/minimal';
 import { env } from '../env.convex';
 import authConfig from './auth.config';
-import { components } from './_generated/api';
+import { components, internal } from './_generated/api';
 import type { DataModel } from './_generated/dataModel';
 import { query } from './_generated/server';
 
@@ -26,6 +26,20 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 		},
 		// these tokens can read private repos, so don't store them in the clear
 		account: { encryptOAuthTokens: true },
+		databaseHooks: {
+			session: {
+				create: {
+					// every sign-in looks the GitHub login up again, so a rename there follows here
+					after: async (session) => {
+						if ('scheduler' in ctx) {
+							await ctx.scheduler.runAfter(0, internal.profiles.refresh, {
+								userId: session.userId
+							});
+						}
+					}
+				}
+			}
+		},
 		plugins: [convex({ authConfig })]
 	});
 };

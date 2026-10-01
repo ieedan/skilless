@@ -36,33 +36,34 @@ You're asked for a name if you leave it out.
 
 ## add
 
-Add skills to this project from your library, or from a git repository.
+Add skills to this project from your library, a git repository, a skill on skilless, or a [pack](/docs/packs).
 
 ```bash
 skilless add [skills...]
 skilless add <repo> [skills...]
+skilless add <address>
 ```
 
-A repository is `owner/repo` or any git URL. Leave out the skills to pick from a list.
+A repository is `owner/repo` or any git URL. Leave out the skills to pick from a list. An address is a skill on skilless (`@user/skill`, or `skilless.dev/skills/<user>/<skill>`) or a pack (`@user/pack/<pack>`, `skilless.dev/packs/<user>/<pack>`, any URL serving one, or a pack file), and is added whole.
 
 | Option            | Description                                                               |
 | ----------------- | ------------------------------------------------------------------------- |
 | `-g, --global`    | Make these skills global, so every project has them.                      |
 | `--not-global`    | Stop treating these skills as global and unlink them from the user level. |
 | `--copy`          | Write real files instead of linking to your library.                      |
-| `--overwrite`     | From a repository: replace library skills with the same name.             |
+| `--overwrite`     | From elsewhere: replace library skills with the same name.                |
 | `-y, --yes`       | Skip confirmation prompts.                                                |
 | `--project <key>` | Use this project key instead of the one from the git remote.              |
 
 ## update
 
-Update skills added from a git repository to what the repository has now.
+Update skills added from a repository, a skilless address or a pack to what is there now.
 
 ```bash
 skilless update [skills...]
 ```
 
-With no skills, updates every skill added from a repository.
+With no skills, updates every skill added from elsewhere, and checks every [pack](/docs/packs) you follow for skills it has gained or dropped.
 
 | Option        | Description                                                |
 | ------------- | ---------------------------------------------------------- |
@@ -187,6 +188,24 @@ skilless sync
 | `--push`    | On a conflict, keep the local copy.  |
 | `--pull`    | On a conflict, keep the remote copy. |
 | `-y, --yes` | Skip confirmation prompts.           |
+
+## packs
+
+Make and manage your [packs](/docs/packs) on skilless.dev. Adding one is `skilless add <pack url>`.
+
+```bash
+skilless packs list
+skilless packs create <name> [skills...]
+skilless packs delete [packs...]
+```
+
+`create` takes library skills by name, repositories (`github.com/owner/repo[/path][#ref]`) and skill addresses. `delete` takes a pack's name, id or URL, or leave it out to pick from a list.
+
+| Option                     | Description                                   |
+| -------------------------- | --------------------------------------------- |
+| `-d, --description <text>` | `create`: what the pack is for.               |
+| `--public`                 | `create`: let anyone with the address add it. |
+| `-y, --yes`                | `delete`: skip the confirmation prompt.       |
 
 ## config editor
 

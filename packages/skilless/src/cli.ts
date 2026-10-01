@@ -29,6 +29,7 @@ const cli = program
 	.commandsGroup('Cloud Commands (skilless.dev):')
 	.addCommand(commands.auth)
 	.addCommand(commands.sync)
+	.addCommand(commands.packs)
 	// Put the built-in help command back with the regular commands.
 	.commandsGroup('Commands:')
 	.helpCommand(true)

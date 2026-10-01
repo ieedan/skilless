@@ -4,8 +4,9 @@ import definition from '@dicebear/styles/glass.json' with { type: 'json' };
 const style = new Style(definition);
 
 /**
- * Avatars are derived from the username, never uploaded — there is no avatar to
- * configure, so there is nothing to moderate, store or migrate.
+ * The fallback for an account with no picture of its own. Most have one — the
+ * GitHub avatar better-auth copies at sign in — so this is rarely seen. It is
+ * derived rather than uploaded, so there is nothing to moderate, store or migrate.
  *
  * Seeded on the stable handle rather than the display name: a rename would
  * otherwise silently hand someone a different face.

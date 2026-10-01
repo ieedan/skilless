@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { APP_NAME } from '$lib/constants';
 	import { Button } from '$lib/components/ui/button';
-	import Logo from './logo.svelte';
 	import SiteFooter from './site-footer.svelte';
+	import SiteHeader, { SITE_WIDTH } from './site-header.svelte';
+	import { cn } from '$lib/utils';
 	import Snippet from './snippet.svelte';
 
 	let { signedIn = false }: { signedIn?: boolean } = $props();
@@ -109,24 +110,9 @@
 </script>
 
 <div class="flex min-h-dvh flex-col bg-background">
-	<header class="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-7">
-		<!-- `/` sends signed-in visitors to the app; the marketing page is /home for them -->
-		<a href={signedIn ? '/home' : '/'} class="flex py-1">
-			<Logo class="h-4" />
-		</a>
+	<SiteHeader {signedIn} />
 
-		<nav class="flex items-center gap-3">
-			<Button href="/docs" variant="ghost">Docs</Button>
-			{#if signedIn}
-				<Button href="/skills">Dashboard</Button>
-			{:else}
-				<Button href="/login">Sign Up</Button>
-				<Button href="/login" variant="outline">Login</Button>
-			{/if}
-		</nav>
-	</header>
-
-	<main class="mx-auto flex w-full max-w-5xl flex-col px-6">
+	<main class={cn('mx-auto flex w-full flex-col', SITE_WIDTH)}>
 		<section class="flex max-w-2xl flex-col gap-8 pt-16 pb-14 md:pt-28">
 			<div class="flex flex-col gap-5">
 				<h1 class="text-5xl leading-[1.05] font-semibold tracking-tight text-balance md:text-6xl">
@@ -282,7 +268,7 @@
 
 	<!-- the CLI is the product; the cloud is the optional layer on top of it -->
 	<section class="mt-24 border-t border-border md:mt-32">
-		<div class="mx-auto flex w-full max-w-5xl flex-col gap-16 px-6 py-24 md:py-32">
+		<div class={cn('mx-auto flex w-full flex-col gap-16 py-24 md:py-32', SITE_WIDTH)}>
 			<div class="grid grid-cols-[minmax(0,1fr)] gap-10 md:grid-cols-2 md:items-center md:gap-16">
 				<div class="flex flex-col gap-6">
 					<h2 class="text-4xl font-semibold tracking-tight text-balance">
@@ -293,7 +279,7 @@
 					</p>
 					<div class="flex flex-wrap gap-3">
 						{#if signedIn}
-							<Button href="/skills" size="lg">Open your library</Button>
+							<Button href="/my-skills" size="lg">Open your library</Button>
 						{:else}
 							<Button href="/login" size="lg">Create an account</Button>
 						{/if}

@@ -30,22 +30,47 @@ export const convexError = errf.create({
 	SkillNameTaken: {
 		code: 'SKILL_NAME_TAKEN',
 		message: 'Skill name taken',
-		userMessage: 'Rename the existing skill before restoring this one'
+		userMessage: 'You have a skill by that name. Delete it before restoring this one.'
 	},
 	SkillChanged: {
 		code: 'SKILL_CHANGED',
 		message: 'Skill changed during write',
 		userMessage: 'That skill changed while saving, please try again'
 	},
+	SkillDerived: {
+		code: 'SKILL_DERIVED',
+		message: 'Skill derived',
+		userMessage: 'Only skills you made can be public. This one was copied from somewhere else.'
+	},
 	SkillTooLarge: {
 		code: 'SKILL_TOO_LARGE',
 		message: 'Skill too large',
-		userMessage: 'Skills are limited to 1MB'
+		userMessage: 'Skills are limited to 3MB'
+	},
+	SkillFileBinary: {
+		code: 'SKILL_FILE_BINARY',
+		message: 'Skill file binary',
+		userMessage: 'That file is binary, so it cannot be edited as text'
 	},
 	SkillFileNotText: {
 		code: 'SKILL_FILE_NOT_TEXT',
 		message: 'Skill file not text',
 		userMessage: 'Skill files must be text'
+	},
+	PackNotFound: {
+		code: 'PACK_NOT_FOUND',
+		message: 'Pack not found',
+		userMessage: 'That pack does not exist'
+	},
+	InvalidPack: {
+		code: 'INVALID_PACK',
+		message: (opts: { reason: string }) => `Invalid pack: ${opts.reason}`,
+		userMessage: 'That pack could not be saved'
+	},
+	SkillFilePathInvalid: {
+		code: 'SKILL_FILE_PATH_INVALID',
+		message: 'Skill file path invalid',
+		userMessage: 'File paths must be relative and stay inside the skill'
 	},
 	ProjectNotFound: {
 		code: 'PROJECT_NOT_FOUND',

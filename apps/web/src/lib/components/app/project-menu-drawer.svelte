@@ -5,6 +5,7 @@
 	import type { MenuProject, MenuSkill, SkillActions } from '$lib/skill-actions.svelte';
 	import RiMoreFill from 'remixicon-svelte/icons/more-fill';
 	import RiDeleteBinLine from 'remixicon-svelte/icons/delete-bin-line';
+	import RiExternalLinkLine from 'remixicon-svelte/icons/external-link-line';
 	import SkillSubdrawer from './skill-subdrawer.svelte';
 
 	let {
@@ -21,7 +22,8 @@
 
 	let open = $state(false);
 
-	const path = $derived(projectParts(project.key).path);
+	const parts = $derived(projectParts(project.key));
+	const path = $derived(parts.path);
 </script>
 
 <Drawer.Root bind:open>
@@ -38,6 +40,18 @@
 			<Drawer.Title class="truncate">{path}</Drawer.Title>
 			<Drawer.Description class="sr-only">Actions for this project</Drawer.Description>
 		</Drawer.Header>
+
+		{#if parts.host !== 'other'}
+			<Drawer.Item
+				href="https://{project.key}"
+				target="_blank"
+				rel="noreferrer"
+				onclick={() => (open = false)}
+			>
+				<RiExternalLinkLine />
+				Open repository
+			</Drawer.Item>
+		{/if}
 
 		<SkillSubdrawer
 			{skills}

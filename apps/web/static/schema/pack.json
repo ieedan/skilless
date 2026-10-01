@@ -1,0 +1,23 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://skilless.dev/schema/pack.json",
+	"title": "skilless pack",
+	"description": "A list of skills to add together with `skilless add <pack>`.",
+	"type": "object",
+	"required": ["skills"],
+	"properties": {
+		"$schema": { "type": "string" },
+		"name": {
+			"type": "string",
+			"description": "Shown as where each skill came from. Defaults to the pack's address."
+		},
+		"description": { "type": "string" },
+		"skills": {
+			"type": "array",
+			"description": "Where to get each skill: a git repository (`github.com/owner/repo`), a folder or one skill inside one (`github.com/owner/repo/skills/foo`), any of them pinned with `#ref`, or a skilless address (`https://skilless.dev/skills/<uuid>`). A repository or folder brings every skill in it, including ones added later.",
+			"items": { "type": "string", "minLength": 1 },
+			"uniqueItems": true
+		}
+	},
+	"additionalProperties": false
+}

@@ -5,6 +5,7 @@ import { SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
 import {
 	fetchMissing,
+	type LibraryEntry,
 	readBindings,
 	readLibrary,
 	refreshGlobals,
@@ -17,6 +18,15 @@ import * as project from '@/utils/project';
 import { confirm, isInteractive, log, multiselect, spin } from '@/utils/prompts';
 import { Remote } from '@/utils/remote';
 import { assertValidName, readSkill } from '@/utils/skill';
+import { addressLabel, addressOf, probe } from '@/utils/address';
+import {
+	isPackFile,
+	type LoadedPack,
+	packLabel,
+	readPackFile,
+	type Resolved,
+	resolvePack
+} from '@/utils/pack';
 import { discoverSkills, isSource, parseSource, type Source, withClone } from '@/utils/source';
 import { setSource } from '@/utils/sources';
 import type { LocalSkill, SkillSource } from '@/utils/types';
@@ -46,11 +56,16 @@ const schema = defaultCommandOptionsSchema.extend({
 
 type Options = z.infer<typeof schema>;
 
+/** What linking needs, so `update` can link the skills a pack gains the same way. */
+type LinkOptions = Pick<Options, 'copy' | 'cwd' | 'project' | 'yes'>;
+
 export const add = new Command('add')
-	.description('Add skills to this project, from your library or from a git repository.')
+	.description(
+		'Add skills to this project: from your library, a git repository, a skilless address, or a pack.'
+	)
 	.argument(
 		'[skills...]',
-		'Skills to add, or a repo (`owner/repo` or any git URL) then the skills to take from it. Omit the skills to pick from a list.'
+		'Skills to add; or a repo (`owner/repo` or any git URL) then the skills to take from it; or a skill or pack address (`skilless.dev/skills/<id>`, `skilless.dev/packs/<id>`, any URL serving a pack, or a pack file). Omit the skills to pick from a list.'
 	)
 	.option(
 		'-g, --global',
@@ -75,8 +90,8 @@ export const add = new Command('add')
 
 			const [first, ...rest] = names;
 
-			if (first && isSource(first)) {
-				await addFromSource(remote, parseSource(first), rest, options);
+			if (first && (isPackFile(first) || isSource(first))) {
+				await addFrom(remote, first, rest, options);
 				return;
 			}
 
@@ -209,7 +224,11 @@ export const add = new Command('add')
  * lives once at the user level (`~/.agents/skills`, `~/.claude/skills`) rather
  * than in every project that uses it.
  */
-async function setGlobal(names: string[], value: boolean, options: Options): Promise<void> {
+export async function setGlobal(
+	names: string[],
+	value: boolean,
+	options: LinkOptions
+): Promise<void> {
 	queueGlobal(names, value);
 	pushInBackground();
 
@@ -246,11 +265,11 @@ async function setGlobal(names: string[], value: boolean, options: Options): Pro
 }
 
 /** Binds skills to a project and links them in. */
-async function bind(
+export async function bind(
 	key: string,
 	names: string[],
 	globals: string[],
-	options: Options
+	options: LinkOptions
 ): Promise<void> {
 	// globals are already in every project, so binding them would be a no-op
 	for (const name of names) {
@@ -362,24 +381,149 @@ async function addFromSource(
 		return;
 	}
 
-	const toSave: LocalSkill[] = [];
-	const names: string[] = [];
-	const sources = new Map<string, SkillSource>();
-
-	for (const { skill, path: at } of chosen) {
-		sources.set(skill.name, {
+	const resolved = chosen.map(({ skill, path: at }) => ({
+		skill,
+		source: {
 			url: source.url,
 			...(source.ref ? { ref: source.ref } : {}),
 			path: at,
 			hash: skill.contentHash
-		});
+		}
+	}));
+
+	await adopt(remote, resolved, source.label, existing, key, options);
+}
+
+/**
+ * Anything named by where it is rather than by name: a pack file, a pack or
+ * skill at an address, or — failing both — a git repository.
+ */
+async function addFrom(
+	remote: Remote | null,
+	arg: string,
+	wanted: string[],
+	options: Options
+): Promise<void> {
+	const whole = (what: string) => {
+		if (wanted.length > 0) {
+			throw new SkillessError(`${what} is added whole, so it takes no skill names after it.`, {
+				suggestion: 'Add it, then `skilless remove` any skills you do not want in this project.'
+			});
+		}
+	};
+
+	if (isPackFile(arg)) {
+		whole('A pack');
+		await addFromPack(remote, readPackFile(arg), options);
+		return;
+	}
+
+	const address = addressOf(arg);
+	if (address) {
+		const found = await spin(`Fetching ${addressLabel(address)}`, () =>
+			probe(address, { intent: 'add' })
+		);
+
+		if (found?.kind === 'pack') {
+			whole('A pack');
+			await addFromPack(
+				remote,
+				{ ref: { url: found.url, name: found.pack.name }, pack: found.pack },
+				options
+			);
+			return;
+		}
+
+		if (found?.kind === 'skill') {
+			whole('A skill address');
+			if (found.mine) {
+				throw new SkillessError(
+					`${found.skill.name} is your own skill, so it is in your library already.`,
+					{
+						suggestion: `Run \`skilless add ${found.skill.name}\` to add it to this project.`
+					}
+				);
+			}
+			if (options.notGlobal) {
+				throw new SkillessError('--not-global only applies to skills already in your library.');
+			}
+
+			const key = options.global ? null : (options.project ?? git.projectKey(options.cwd));
+			const library = await load(remote, () => readLibrary(remote));
+			const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
+			const resolved = {
+				skill: found.skill,
+				source: { url: found.url, path: '', hash: found.skill.contentHash }
+			};
+
+			await adopt(remote, [resolved], addressLabel(found.url), existing, key, options);
+			return;
+		}
+	}
+
+	await addFromSource(remote, parseSource(arg), wanted, options);
+}
+
+/**
+ * `skilless add <pack>`: every skill the pack names, copied into your library
+ * and added the same way as any library skill. Each one remembers the pack, so
+ * `skilless update` can bring in what it gains later.
+ */
+async function addFromPack(
+	remote: Remote | null,
+	loaded: LoadedPack,
+	options: Options
+): Promise<void> {
+	if (options.notGlobal) {
+		throw new SkillessError('--not-global only applies to skills already in your library.');
+	}
+
+	const label = packLabel(loaded.ref);
+	const key = options.global ? null : (options.project ?? git.projectKey(options.cwd));
+
+	if (loaded.pack.skills.length === 0) {
+		log.info(`${label} is empty.`);
+		return;
+	}
+
+	const library = await load(remote, () => readLibrary(remote));
+	const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
+
+	const { skills } = await resolvePack(loaded, { interactive: isInteractive, intent: 'add' });
+
+	if (skills.length === 0) {
+		throw new SkillessError(`Nothing in ${label} could be added.`);
+	}
+
+	await adopt(remote, skills, label, existing, key, options);
+}
+
+/**
+ * Copies skills from somewhere else into your library — asking before
+ * replacing one you have that differs — records where each came from, then
+ * adds them to the project, or makes them global, like any library skill.
+ */
+async function adopt(
+	remote: Remote | null,
+	resolved: Resolved[],
+	from: string,
+	existing: Map<string, LibraryEntry>,
+	key: string | null,
+	options: Options
+): Promise<void> {
+	const toSave: LocalSkill[] = [];
+	const names: string[] = [];
+	const sources = new Map<string, SkillSource>();
+
+	for (const { skill, source } of resolved) {
+		sources.set(skill.name, source);
 
 		const have = existing.get(skill.name);
 		const hash = have?.local?.contentHash ?? have?.remote?.contentHash;
 
 		if (!have || hash === skill.contentHash) {
-			// the same files are already yours, so they are the repo's copy too
-			if (have) setSource(skill.name, sources.get(skill.name)!);
+			// the same files are already yours, so they are this source's copy too
+			if (have) setSource(skill.name, source);
 			else toSave.push(skill);
 
 			names.push(skill.name);
@@ -391,7 +535,7 @@ async function addFromSource(
 			(isInteractive &&
 				!options.yes &&
 				(await confirm(
-					`${skill.name} is already in your library. Replace it with the one from ${source.label}?`
+					`${skill.name} is already in your library. Replace it with the one from ${from}?`
 				)));
 
 		if (!replace) {
@@ -406,7 +550,7 @@ async function addFromSource(
 	const saved = saveToLibrary(toSave, existing, sources);
 
 	for (const name of saved) {
-		log.step(`Copied ${name} into your library from ${source.label}.`);
+		log.step(`Copied ${name} into your library from ${from}.`);
 	}
 
 	if (names.length === 0) {
