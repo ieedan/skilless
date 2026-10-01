@@ -44,3 +44,13 @@ export function cacheProject(key: string, resolved: RemoteSkill[]): void {
 	cache.projects[key] = resolved.filter((skill) => !skill.global).map((skill) => skill.name);
 	fsu.writeJson(CACHE_FILE, cache);
 }
+
+/**
+ * Applies a change the server just accepted, so what this machine reads
+ * locally stays in step without listing everything again.
+ */
+export function updateCache(change: (cache: Cache) => void): void {
+	const cache = readCache();
+	change(cache);
+	fsu.writeJson(CACHE_FILE, cache);
+}

@@ -39,6 +39,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"@types/update-notifier": "^6.0.8",
 		"commander": "catalog:",
 		"enquirer": "^2.4.1",
 		"ora": "^9.4.1",
@@ -48,5 +49,8 @@
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"zod": "catalog:"
+	},
+	"dependencies": {
+		"update-notifier": "^7.3.1"
 	}
 }

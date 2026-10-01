@@ -2,19 +2,28 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
-import { flush, readBindings, readLibrary } from '@/utils/library';
+import { pushInBackground } from '@/utils/background';
+import { readBindings, readLibrary } from '@/utils/library';
 import { AGENTS_SKILLS, CLAUDE_SKILLS } from '@/utils/paths';
 import { queueUnbind } from '@/utils/pending';
 import * as project from '@/utils/project';
-import { confirm, isInteractive, log, multiselect, spin } from '@/utils/prompts';
+import { confirm, isInteractive, log, multiselect } from '@/utils/prompts';
 import { Remote } from '@/utils/remote';
-import type { SkillFile } from '@/utils/types';
 import { VERSION } from '@/utils/version';
-import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
+import {
+	commonOptions,
+	defaultCommandOptionsSchema,
+	fetchFiles,
+	load,
+	parseOptions,
+	remoteIf,
+	tryCommand
+} from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
 	project: z.string().optional(),
-	yes: z.boolean()
+	yes: z.boolean(),
+	sync: z.boolean().optional()
 });
 
 /**
@@ -28,6 +37,7 @@ export const vendor = new Command('vendor')
 	.argument('[skills...]', 'Skills to vendor. Omit to pick from a list.')
 	.addOption(commonOptions.yes)
 	.addOption(commonOptions.project)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (names: string[], raw) => {
 		const options = parseOptions(schema, raw);
@@ -41,16 +51,15 @@ export const vendor = new Command('vendor')
 				});
 			}
 
-			const remote = new Remote();
+			let remote = remoteIf(options.sync);
 			const key = options.project ?? git.projectKey(options.cwd);
 
-			const [library, bound] = await spin('Loading your library', async () => {
-				await flush(remote);
-				return [
-					await readLibrary(remote),
-					new Set(key ? await readBindings(remote, key) : [])
-				] as const;
-			});
+			const [library, bound] = await load(remote, () =>
+				Promise.all([
+					readLibrary(remote),
+					key ? readBindings(remote, key).then((b) => new Set(b)) : new Set<string>()
+				])
+			);
 
 			const known = new Map(library.entries.map((skill) => [skill.name, skill]));
 			const unknown = names.filter((name) => !known.has(name));
@@ -66,7 +75,7 @@ export const vendor = new Command('vendor')
 			if (selected.length === 0) {
 				if (library.entries.length === 0) {
 					log.info('Your library is empty.');
-					remote.report();
+					remote?.report();
 					return;
 				}
 
@@ -87,7 +96,8 @@ export const vendor = new Command('vendor')
 			const vendored: string[] = [];
 
 			for (const name of selected) {
-				const files = await spin(`Reading ${name}`, () => filesOf(remote, known.get(name)!));
+				const entry = known.get(name)!;
+				const files = entry.local?.files ?? (await fetchFiles((remote ??= new Remote()), name));
 
 				if (!files) {
 					log.warn(`${name} is not on this machine, and the server can't be reached to fetch it.`);
@@ -114,7 +124,7 @@ export const vendor = new Command('vendor')
 			}
 
 			if (vendored.length === 0) {
-				remote.report();
+				remote?.report();
 				return;
 			}
 
@@ -123,7 +133,7 @@ export const vendor = new Command('vendor')
 
 			if (key && unbinding.length > 0) {
 				queueUnbind(key, unbinding);
-				await spin('Updating this project', () => flush(remote));
+				pushInBackground();
 
 				for (const name of unbinding) log.dim(`Took ${name} out of this project in skilless.`);
 			}
@@ -139,17 +149,6 @@ export const vendor = new Command('vendor')
 					.join(', ')} to share ${vendored.length === 1 ? 'it' : 'them'}.`
 			);
 
-			remote.report();
+			remote?.report();
 		});
 	});
-
-/** A skill's files: from the store when it is on this machine, else from the server. */
-async function filesOf(
-	remote: Remote,
-	entry: { name: string; local: { files: SkillFile[] } | null }
-): Promise<SkillFile[] | null> {
-	if (entry.local) return entry.local.files;
-
-	const fetched = await remote.try((api) => api.getSkill(entry.name));
-	return fetched?.files ?? null;
-}

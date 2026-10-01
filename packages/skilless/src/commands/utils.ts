@@ -5,12 +5,16 @@ import pc from 'picocolors';
 import { z } from 'zod';
 import { ApiClient } from '@/utils/api';
 import { getApiUrl, getToken } from '@/utils/auth';
+import type { LibraryEntry } from '@/utils/library';
 import { NotAProjectError, NotAuthenticatedError, SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
 import { shouldCopy } from '@/utils/install';
 import * as project from '@/utils/project';
 import type { Skipped } from '@/utils/project';
-import { confirm, isInteractive, log } from '@/utils/prompts';
+import { flush } from '@/utils/library';
+import { confirm, isInteractive, log, spin } from '@/utils/prompts';
+import { Remote } from '@/utils/remote';
+import type { SkillFile } from '@/utils/types';
 
 export const TRACE_ENV_VAR = 'SKILLESS_TRACE';
 
@@ -21,6 +25,10 @@ export const defaultCommandOptionsSchema = z.object({
 export const commonOptions = {
 	cwd: new Option('--cwd <path>', 'The current working directory.').default(process.cwd()),
 	yes: new Option('-y, --yes', 'Skip confirmation prompts.').default(false),
+	sync: new Option(
+		'-s, --sync',
+		'Check skilless.dev for changes first. Without it, only what is on this machine is read.'
+	),
 	project: new Option(
 		'--project <key>',
 		'Override the project key. Defaults to the normalized git remote.'
@@ -69,6 +77,77 @@ export function requireApi(): ApiClient {
 	if (!token) throw new NotAuthenticatedError();
 
 	return new ApiClient(token, getApiUrl());
+}
+
+/**
+ * The server, only when `--sync` asks for it. Everything a command reads is
+ * on this machine already; what it changes goes up in the background.
+ */
+export function remoteIf(sync: boolean | undefined): Remote | null {
+	return sync ? new Remote() : null;
+}
+
+/**
+ * Runs a command's reads. With a remote, whatever is queued goes first, so
+ * what comes back includes it; without one this is just `run`.
+ */
+export async function load<T>(remote: Remote | null, run: () => Promise<T>): Promise<T> {
+	if (!remote) return run();
+
+	return spin('Checking skilless.dev', async () => {
+		await flush(remote);
+		return run();
+	});
+}
+
+/**
+ * The gray details beside a skill wherever it is listed: where it came from,
+ * and whether it is missing here or has changes that haven't been sent.
+ * `synced` is off when signed out, where "not synced" would tag every skill.
+ */
+export function skillDetails(skill: LibraryEntry, synced = getToken() !== null): string[] {
+	const details: string[] = [];
+
+	if (skill.source)
+		details.push(`from ${git.normalizeRemote(skill.source.url) ?? skill.source.url}`);
+	if (!skill.local) details.push('not on this machine');
+	else if (synced && skill.unsynced) details.push('not synced');
+
+	return details;
+}
+
+/**
+ * Picker choices laid out like \`skilless list\`: names in a column, details
+ * beside them in gray. A \`disabled\` reason leads the details and the choice
+ * cannot be picked.
+ */
+export function skillChoices(
+	skills: { entry: LibraryEntry; disabled?: string }[]
+): { name: string; message: string; hint?: string; disabled?: boolean }[] {
+	const width = Math.max(0, ...skills.map(({ entry }) => entry.name.length)) + 2;
+
+	return skills.map(({ entry, disabled }) => {
+		const hint = [...(disabled ? [disabled] : []), ...skillDetails(entry)].join(' · ');
+		return {
+			name: entry.name,
+			message: hint ? entry.name.padEnd(width) : entry.name,
+			...(hint ? { hint } : {}),
+			...(disabled ? { disabled: true } : {})
+		};
+	});
+}
+
+/**
+ * A skill's files from the server, for one your library has that is not on
+ * this machine yet. Null when the server cannot be reached.
+ */
+export async function fetchFiles(
+	remote: Remote,
+	name: string,
+	message = `Fetching ${name}`
+): Promise<SkillFile[] | null> {
+	const fetched = await spin(message, () => remote.try((api) => api.getSkill(name)));
+	return fetched?.files ?? null;
 }
 
 /**

@@ -2,8 +2,8 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import { normalizeRemote } from '@/utils/git';
-import { flush, type LibraryEntry, readLibrary, saveToLibrary } from '@/utils/library';
-import { confirm, isInteractive, log, spin } from '@/utils/prompts';
+import { type LibraryEntry, readLibrary, saveToLibrary } from '@/utils/library';
+import { confirm, isInteractive, log } from '@/utils/prompts';
 import { Remote } from '@/utils/remote';
 import { readSkill } from '@/utils/skill';
 import { setSource } from '@/utils/sources';
@@ -11,11 +11,20 @@ import { locateSkill, withClone } from '@/utils/source';
 import { stashFiles } from '@/utils/sync';
 import type { LocalSkill, SkillSource } from '@/utils/types';
 import { VERSION } from '@/utils/version';
-import { commonOptions, defaultCommandOptionsSchema, parseOptions, tryCommand } from './utils';
+import {
+	commonOptions,
+	defaultCommandOptionsSchema,
+	fetchFiles,
+	load,
+	parseOptions,
+	remoteIf,
+	tryCommand
+} from './utils';
 
 const schema = defaultCommandOptionsSchema.extend({
 	yes: z.boolean(),
-	force: z.boolean()
+	force: z.boolean(),
+	sync: z.boolean().optional()
 });
 
 type Tracked = LibraryEntry & { source: SkillSource };
@@ -30,17 +39,15 @@ export const update = new Command('update')
 	.argument('[skills...]', 'Skills to update. Omit to update every skill added from a repository.')
 	.option('-f, --force', 'Replace skills you have edited too. Your copy is kept first.', false)
 	.addOption(commonOptions.yes)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (names: string[], raw) => {
 		const options = parseOptions(schema, raw);
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const remote = new Remote();
-			const library = await spin('Loading your library', async () => {
-				await flush(remote);
-				return readLibrary(remote);
-			});
+			let remote = remoteIf(options.sync);
+			const library = await load(remote, () => readLibrary(remote));
 			const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
 			const tracked = library.entries.filter((skill): skill is Tracked => skill.source !== null);
 
@@ -65,7 +72,7 @@ export const update = new Command('update')
 			if (targets.length === 0) {
 				log.info('None of your skills were added from a repository.');
 				log.dim('Run `skilless add owner/repo` to add some.');
-				remote.report();
+				remote?.report();
 				return;
 			}
 
@@ -135,11 +142,11 @@ export const update = new Command('update')
 
 								const files =
 									skill.local?.files ??
-									(
-										await spin(`Fetching your copy of ${skill.name}`, () =>
-											remote.try((api) => api.getSkill(skill.name))
-										)
-									)?.files;
+									(await fetchFiles(
+										(remote ??= new Remote()),
+										skill.name,
+										`Fetching your copy of ${skill.name}`
+									));
 
 								if (!files) {
 									log.warn(
@@ -170,9 +177,7 @@ export const update = new Command('update')
 
 			log.blank();
 
-			const saved = await spin(`Saving ${toSave.length} skill(s) to your library`, () =>
-				saveToLibrary(remote, toSave, existing, sources)
-			);
+			const saved = saveToLibrary(toSave, existing, sources);
 
 			for (const name of saved) {
 				log.step(`Updated ${name}.`);
@@ -202,6 +207,6 @@ export const update = new Command('update')
 				for (const stash of stashed) log.dim(`  ${stash.dir}`);
 			}
 
-			remote.report();
+			remote?.report();
 		});
 	});

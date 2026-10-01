@@ -1,4 +1,5 @@
 import type { ApiClient } from '@/utils/api';
+import { type Cache, updateCache } from '@/utils/cache';
 import * as fsu from '@/utils/fs';
 import { PENDING_FILE } from '@/utils/paths';
 import { localSkillNames } from '@/utils/skill';
@@ -111,12 +112,26 @@ export function queueDelete(names: string[]): void {
 }
 
 /**
+ * Reads the queue fresh, applies `change`, and writes it back. Another
+ * process — a background push, or a command run meanwhile — may have queued
+ * something since this one last read it, and that must not be written over.
+ */
+function settle(change: (pending: Pending) => void): void {
+	const pending = readPending();
+	change(pending);
+	writePending(pending);
+}
+
+/**
  * Sends everything queued to the server. Progress is saved after each step, so
  * losing the connection halfway leaves the rest queued rather than lost.
  *
  * A change about a skill the server does not have yet — one created offline —
- * stays queued until the `sync` that pushes it. Once the skill is gone from
+ * stays queued until the push that sends it. Once the skill is gone from
  * this machine too, there is nothing left for it to wait on, so it is dropped.
+ *
+ * Each change the server accepts is written into the cache as well, since
+ * that, plus the queue, is what every command reads without `--sync`.
  *
  * Pass `library` when the caller has just listed it, to save listing it again.
  *
@@ -128,17 +143,23 @@ export async function flushPending(api: ApiClient, library?: RemoteSkill[]): Pro
 
 	const known = new Set((library ?? (await api.listSkills())).map((skill) => skill.name));
 	const waiting = (name: string) => localSkillNames().includes(name);
+	const inLibrary = (cache: Cache, name: string) =>
+		cache.library?.find((skill) => skill.name === name);
 	let sent = 0;
 
-	for (const name of [...pending.deletes]) {
+	for (const name of pending.deletes) {
 		if (known.has(name)) {
 			await api.deleteSkill(name);
 			known.delete(name);
 			sent++;
 		}
 
-		pending.deletes = pending.deletes.filter((n) => n !== name);
-		writePending(pending);
+		updateCache((cache) => {
+			cache.library = cache.library?.filter((skill) => skill.name !== name) ?? null;
+		});
+		settle((fresh) => {
+			fresh.deletes = fresh.deletes.filter((n) => n !== name);
+		});
 	}
 
 	for (const [name, value] of Object.entries(pending.globals)) {
@@ -146,11 +167,17 @@ export async function flushPending(api: ApiClient, library?: RemoteSkill[]): Pro
 			if (waiting(name)) continue;
 		} else {
 			await api.setGlobal(name, value);
+			updateCache((cache) => {
+				const skill = inLibrary(cache, name);
+				if (skill) skill.global = value;
+			});
 			sent++;
 		}
 
-		delete pending.globals[name];
-		writePending(pending);
+		// changed again meanwhile, so that change is still to send
+		settle((fresh) => {
+			if (fresh.globals[name] === value) delete fresh.globals[name];
+		});
 	}
 
 	for (const [name, source] of Object.entries(pending.sources)) {
@@ -158,11 +185,17 @@ export async function flushPending(api: ApiClient, library?: RemoteSkill[]): Pro
 			if (waiting(name)) continue;
 		} else {
 			await api.setSource(name, source);
+			updateCache((cache) => {
+				const skill = inLibrary(cache, name);
+				if (skill) skill.source = source;
+			});
 			sent++;
 		}
 
-		delete pending.sources[name];
-		writePending(pending);
+		settle((fresh) => {
+			if (JSON.stringify(fresh.sources[name]) === JSON.stringify(source))
+				delete fresh.sources[name];
+		});
 	}
 
 	for (const [key, entry] of Object.entries(pending.projects)) {
@@ -179,11 +212,20 @@ export async function flushPending(api: ApiClient, library?: RemoteSkill[]): Pro
 
 		sent += entry.add.filter((name) => !unknown.has(name)).length + entry.remove.length;
 
-		entry.add = entry.add.filter((name) => unknown.has(name) && waiting(name));
-		entry.remove = [];
+		updateCache((cache) => {
+			cache.projects[key] = result.bound;
+		});
+		settle((fresh) => {
+			const change = fresh.projects[key];
+			if (!change) return;
 
-		if (entry.add.length === 0) delete pending.projects[key];
-		writePending(pending);
+			// only what was sent; anything queued since stays
+			const keep = (name: string) => unknown.has(name) && waiting(name);
+			change.add = change.add.filter((name) => !entry.add.includes(name) || keep(name));
+			change.remove = change.remove.filter((name) => !entry.remove.includes(name));
+
+			if (change.add.length === 0 && change.remove.length === 0) delete fresh.projects[key];
+		});
 	}
 
 	return sent;

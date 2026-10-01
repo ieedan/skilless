@@ -4,14 +4,14 @@ import { z } from 'zod';
 import { SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
 import {
-	flush,
-	type LibraryEntry,
+	fetchMissing,
 	readBindings,
 	readLibrary,
 	refreshGlobals,
 	refreshProject,
 	saveToLibrary
 } from '@/utils/library';
+import { pushInBackground } from '@/utils/background';
 import { queueBind, queueGlobal } from '@/utils/pending';
 import * as project from '@/utils/project';
 import { confirm, isInteractive, log, multiselect, spin } from '@/utils/prompts';
@@ -24,8 +24,11 @@ import { VERSION } from '@/utils/version';
 import {
 	commonOptions,
 	defaultCommandOptionsSchema,
+	load,
 	parseOptions,
+	remoteIf,
 	requireProjectKey,
+	skillChoices,
 	tryCommand,
 	USER_SKILLS,
 	settleRefresh
@@ -37,6 +40,7 @@ const schema = defaultCommandOptionsSchema.extend({
 	global: z.boolean().optional(),
 	notGlobal: z.boolean().optional(),
 	overwrite: z.boolean(),
+	sync: z.boolean().optional(),
 	yes: z.boolean()
 });
 
@@ -60,13 +64,14 @@ export const add = new Command('add')
 	.option('--overwrite', 'From a repo: replace library skills of the same name.', false)
 	.addOption(commonOptions.yes)
 	.addOption(commonOptions.project)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (names: string[], raw) => {
 		const options = parseOptions(schema, raw);
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const remote = new Remote();
+			let remote = remoteIf(options.sync);
 
 			const [first, ...rest] = names;
 
@@ -82,24 +87,32 @@ export const add = new Command('add')
 				});
 			}
 
-			const { entries: library, live } = await spin('Loading your library', async () => {
-				await flush(remote);
-				return readLibrary(remote);
-			});
+			// the project's skills only matter when adding to one, but are read
+			// alongside the library rather than after it
+			const projectKey =
+				options.global || options.notGlobal
+					? null
+					: (options.project ?? git.projectKey(options.cwd));
 
-			// without the server, a skill that is not on disk has nothing to link
-			const linkable = (skill: LibraryEntry) => live || skill.local !== null;
-			const assertLinkable = (selected: string[]) => {
-				const missing = library
-					.filter((skill) => selected.includes(skill.name) && !linkable(skill))
+			const [{ entries: library }, boundNames] = await load(remote, () =>
+				Promise.all([readLibrary(remote), projectKey ? readBindings(remote, projectKey) : []])
+			);
+
+			// a skill your library has that is not on disk yet is fetched to be linked
+			const ensureLocal = async (selected: string[]) => {
+				const absent = library
+					.filter((skill) => selected.includes(skill.name) && skill.local === null)
 					.map((skill) => skill.name);
+				if (absent.length === 0) return;
 
-				if (missing.length === 0) return;
+				const server = (remote ??= new Remote());
+				const failed = await spin('Fetching from skilless.dev', () => fetchMissing(server, absent));
 
-				throw new SkillessError(
-					`${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not on this machine, and the server can't be reached to fetch ${missing.length === 1 ? 'it' : 'them'}.`,
-					{ suggestion: 'Run `skilless sync` once you are back online, then try again.' }
-				);
+				if (failed.length > 0) {
+					throw new SkillessError(`Couldn't fetch ${failed.join(', ')} from skilless.dev.`, {
+						suggestion: 'Check your connection, then try again.'
+					});
+				}
 			};
 
 			const known = new Set(library.map((skill) => skill.name));
@@ -118,9 +131,7 @@ export const add = new Command('add')
 				let selected = names;
 
 				if (selected.length === 0) {
-					const candidates = library.filter(
-						(skill) => skill.global !== value && (!value || linkable(skill))
-					);
+					const candidates = library.filter((skill) => skill.global !== value);
 
 					if (candidates.length === 0) {
 						log.info(
@@ -133,7 +144,7 @@ export const add = new Command('add')
 
 					selected = await multiselect(
 						value ? 'Make global' : 'Stop being global',
-						candidates.map((skill) => ({ name: skill.name }))
+						skillChoices(candidates.map((entry) => ({ entry })))
 					);
 
 					if (selected.length === 0) {
@@ -142,48 +153,41 @@ export const add = new Command('add')
 					}
 				}
 
-				if (value) assertLinkable(selected);
+				if (value) await ensureLocal(selected);
 
-				await setGlobal(remote, selected, value, options);
-				remote.report();
+				await setGlobal(selected, value, options);
+				remote?.report();
 				return;
 			}
 
 			/* ----------------------------------------------------------- project */
 
-			const key = requireProjectKey(options.cwd, options.project);
-			const bound = new Set(await spin(`Loading ${key}`, () => readBindings(remote, key)));
+			const key = requireProjectKey(options.cwd, projectKey ?? undefined);
+			const bound = new Set(boundNames);
 
 			let selected = names;
 
 			if (selected.length === 0) {
 				// globals are already in every project, so there is nothing to add
-				const available = library.filter(
-					(skill) => !bound.has(skill.name) && !skill.global && linkable(skill)
-				);
+				const available = library.filter((skill) => !bound.has(skill.name) && !skill.global);
 
 				if (available.length === 0) {
-					log.info(
-						live
-							? 'Every skill in your library is already in this project.'
-							: 'Every skill on this machine is already in this project.'
-					);
-					remote.report();
+					log.info('Every skill in your library is already in this project.');
+					remote?.report();
 					return;
 				}
 
-				// already-added skills stay in the list, so it is clear they were not lost
+				// already-added skills stay in the list, so it is clear they were not lost.
+				// Globals are in every project already, so they would only be noise
 				selected = await multiselect(
 					`Add to ${key}`,
-					library
-						.filter((skill) => skill.global || bound.has(skill.name) || linkable(skill))
-						.map((skill) =>
-							skill.global
-								? { name: skill.name, disabled: 'installed globally' }
-								: bound.has(skill.name)
-									? { name: skill.name, disabled: 'already added' }
-									: { name: skill.name }
-						)
+					skillChoices(
+						library
+							.filter((entry) => !entry.global)
+							.map((entry) =>
+								bound.has(entry.name) ? { entry, disabled: 'already added' } : { entry }
+							)
+					)
 				);
 
 				if (selected.length === 0) {
@@ -193,10 +197,10 @@ export const add = new Command('add')
 			}
 
 			const globals = library.filter((skill) => skill.global).map((skill) => skill.name);
-			assertLinkable(selected.filter((name) => !globals.includes(name)));
+			await ensureLocal(selected.filter((name) => !globals.includes(name)));
 
-			await bind(remote, key, selected, globals, options);
-			remote.report();
+			await bind(key, selected, globals, options);
+			remote?.report();
 		});
 	});
 
@@ -205,14 +209,9 @@ export const add = new Command('add')
  * lives once at the user level (`~/.agents/skills`, `~/.claude/skills`) rather
  * than in every project that uses it.
  */
-async function setGlobal(
-	remote: Remote,
-	names: string[],
-	value: boolean,
-	options: Options
-): Promise<void> {
+async function setGlobal(names: string[], value: boolean, options: Options): Promise<void> {
 	queueGlobal(names, value);
-	await spin('Saving to skilless.dev', () => flush(remote));
+	pushInBackground();
 
 	for (const name of names) {
 		log.step(
@@ -223,15 +222,15 @@ async function setGlobal(
 	const key = options.project ?? git.projectKey(options.cwd);
 	const root = project.projectRoot(options.cwd);
 
-	const [result, user] = await spin('Updating your skills', async () => {
+	const [result, user] = await (async () => {
 		if (!key) {
-			const user = await refreshGlobals(remote);
+			const user = await refreshGlobals(null);
 			return [user, user] as const;
 		}
 
-		const result = await refreshProject(remote, root, key, { copy: options.copy });
+		const result = await refreshProject(null, root, key, { copy: options.copy });
 		return [result, result.user] as const;
-	});
+	})();
 
 	for (const name of user.written.filter((name) => names.includes(name)))
 		log.dim(`Linked ${name} into ${USER_SKILLS}.`);
@@ -248,7 +247,6 @@ async function setGlobal(
 
 /** Binds skills to a project and links them in. */
 async function bind(
-	remote: Remote,
 	key: string,
 	names: string[],
 	globals: string[],
@@ -262,12 +260,10 @@ async function bind(
 	const toBind = names.filter((name) => !globals.includes(name));
 
 	queueBind(key, toBind);
+	pushInBackground();
 
 	const root = project.projectRoot(options.cwd);
-	const installed = await spin('Updating this project', async () => {
-		await flush(remote);
-		return refreshProject(remote, root, key, { copy: options.copy });
-	});
+	const installed = await refreshProject(null, root, key, { copy: options.copy });
 
 	for (const name of toBind) log.step(`Added ${name} to this project.`);
 
@@ -280,7 +276,7 @@ async function bind(
  * one remembers the repo it came from, so `skilless update` can refresh it.
  */
 async function addFromSource(
-	remote: Remote,
+	remote: Remote | null,
 	source: Source,
 	wanted: string[],
 	options: Options
@@ -292,10 +288,7 @@ async function addFromSource(
 	// resolve this before cloning, so a bad --project fails fast
 	const key = options.global ? null : (options.project ?? git.projectKey(options.cwd));
 
-	const library = await spin('Loading your library', async () => {
-		await flush(remote);
-		return readLibrary(remote);
-	});
+	const library = await load(remote, () => readLibrary(remote));
 	const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
 
 	const requested = [...wanted, ...(source.skill ? [source.skill] : [])];
@@ -365,7 +358,7 @@ async function addFromSource(
 
 	if (chosen.length === 0) {
 		log.info('Nothing selected.');
-		remote.report();
+		remote?.report();
 		return;
 	}
 
@@ -410,25 +403,23 @@ async function addFromSource(
 		names.push(skill.name);
 	}
 
-	const saved = await spin(`Saving ${toSave.length} skill(s) to your library`, () =>
-		saveToLibrary(remote, toSave, existing, sources)
-	);
+	const saved = saveToLibrary(toSave, existing, sources);
 
 	for (const name of saved) {
 		log.step(`Copied ${name} into your library from ${source.label}.`);
 	}
 
 	if (names.length === 0) {
-		remote.report();
+		remote?.report();
 		return;
 	}
 
 	if (options.global) {
-		await setGlobal(remote, names, true, options);
+		await setGlobal(names, true, options);
 	} else if (key) {
-		const library = await spin('Loading your library', () => readLibrary(remote));
+		const library = await readLibrary(null);
 		const globals = library.entries.filter((skill) => skill.global).map((skill) => skill.name);
-		await bind(remote, key, names, globals, options);
+		await bind(key, names, globals, options);
 	} else {
 		log.blank();
 		log.dim(
@@ -436,7 +427,7 @@ async function addFromSource(
 		);
 	}
 
-	remote.report();
+	remote?.report();
 }
 
 /** A description short enough to sit beside a name in a list. */

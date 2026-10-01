@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { z } from 'zod';
+import { clearStatus } from '@/utils/background';
 import { cacheLibrary } from '@/utils/cache';
 import * as git from '@/utils/git';
 import { installProject, linkGlobals } from '@/utils/install';
@@ -82,6 +83,8 @@ export const sync = new Command('sync')
 
 			cacheLibrary(latest);
 			adoptSources(latest);
+			// everything is sent and fetched, so nothing the background noticed still holds
+			clearStatus();
 
 			// inside a project, bring its links up to date too — the store is
 			// current now, so this is what makes a website edit show up here.

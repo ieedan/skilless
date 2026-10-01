@@ -5,26 +5,22 @@ import { readConfig } from '@/utils/config';
 import { EDITORS, isTerminalEditor, openInEditor } from '@/utils/editor';
 import { SkillessError } from '@/utils/errors';
 import * as git from '@/utils/git';
-import { flush, readLibrary, refreshGlobals, refreshProject } from '@/utils/library';
+import { getToken } from '@/utils/auth';
+import { pushInBackground } from '@/utils/background';
+import { readLibrary, refreshGlobals, refreshProject } from '@/utils/library';
 import { queueBind, queueGlobal } from '@/utils/pending';
 import { skillDir } from '@/utils/paths';
 import * as project from '@/utils/project';
-import { input, isInteractive, log, spin } from '@/utils/prompts';
-import { Remote } from '@/utils/remote';
-import {
-	assertValidName,
-	findLocalSkill,
-	isValidName,
-	readSkill,
-	scaffold,
-	writeSkill
-} from '@/utils/skill';
+import { input, isInteractive, log } from '@/utils/prompts';
+import { assertValidName, findLocalSkill, isValidName, scaffold, writeSkill } from '@/utils/skill';
 import { readState, writeState } from '@/utils/state';
 import { VERSION } from '@/utils/version';
 import {
 	commonOptions,
 	defaultCommandOptionsSchema,
+	load,
 	parseOptions,
+	remoteIf,
 	tryCommand,
 	settleRefresh
 } from './utils';
@@ -33,6 +29,7 @@ const schema = defaultCommandOptionsSchema.extend({
 	description: z.string().optional(),
 	project: z.string().optional(),
 	global: z.boolean().optional(),
+	sync: z.boolean().optional(),
 	open: z.boolean()
 });
 
@@ -48,17 +45,15 @@ export const create = new Command('create')
 	)
 	.option('--no-open', 'Do not open SKILL.md in your editor (see `skilless config editor`).')
 	.addOption(commonOptions.project)
+	.addOption(commonOptions.sync)
 	.addOption(commonOptions.cwd)
 	.action(async (nameArg: string | undefined, raw) => {
 		const options = parseOptions(schema, raw);
 		log.intro(VERSION);
 
 		await tryCommand(async () => {
-			const remote = new Remote();
-			const library = await spin('Loading your library', async () => {
-				await flush(remote);
-				return readLibrary(remote);
-			});
+			const remote = remoteIf(options.sync);
+			const library = await load(remote, () => readLibrary(remote));
 			const taken = new Set(library.entries.map((skill) => skill.name));
 
 			let name = nameArg;
@@ -98,22 +93,12 @@ export const create = new Command('create')
 
 			writeSkill(name, scaffold(name, description));
 
-			// left out of state.json if this does not go through, which is exactly
-			// what makes the next sync push it
-			const skill = readSkill(skillDir(name), name);
-			const pushed = await spin(`Creating ${name}`, () =>
-				remote.try((api) => api.putSkill(name, skill.files, skill.editedAt))
-			);
-
-			if (pushed) {
-				const state = readState();
-				state.skills[name] = {
-					contentHash: skill.contentHash,
-					editedAt: skill.editedAt,
-					syncedAt: Date.now()
-				};
-				writeState(state);
-			}
+			// unknown to state.json is what makes a push send it as new, rather
+			// than read it as a skill deleted elsewhere
+			const state = readState();
+			delete state.skills[name];
+			writeState(state);
+			pushInBackground();
 
 			log.step(`Created ${name} in your library.`);
 
@@ -128,19 +113,9 @@ export const create = new Command('create')
 
 				const root = project.projectRoot(options.cwd);
 				// the whole resolved set, so any global skills land too
-				const result = await spin('Updating this project', async () => {
-					await flush(remote);
-					return refreshProject(remote, root, key);
-				});
-				await settleRefresh(result);
+				await settleRefresh(await refreshProject(null, root, key));
 			} else if (options.global) {
-				const result = await spin('Linking your global skills', async () => {
-					await flush(remote);
-					return refreshGlobals(remote);
-				});
-				await settleRefresh(result);
-			} else {
-				await spin('Saving to skilless.dev', () => flush(remote));
+				await settleRefresh(await refreshGlobals(null));
 			}
 
 			if (options.global) log.step(`${name} is now global, so every project has it.`);
@@ -166,8 +141,8 @@ export const create = new Command('create')
 				log.dim(`Edit ${name} at ${file}`);
 			}
 
-			if (remote.api) log.dim('Run `skilless sync` to save your changes.');
+			if (getToken()) log.dim('Run `skilless sync` to save your changes.');
 
-			remote.report();
+			remote?.report();
 		});
 	});
