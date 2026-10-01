@@ -8,7 +8,11 @@ import type { SkillSource } from '$lib/source';
 
 type Client = ReturnType<typeof useConvexClient>;
 type Result = FunctionReturnType<typeof api.imports.fromGithub>;
-export type Conflict = Result['conflicts'][number];
+/** A skill on skilless, by its owner and name. */
+export type SkillessRef = { username: string; name: string };
+
+/** A pick whose skill you have a different one of; from GitHub, or from skilless. */
+export type Conflict = Result['conflicts'][number] & { skilless?: SkillessRef };
 
 /** One pick on its way into the library: a skill, or (`dir: null`) a whole repo. */
 export type Pending = {
@@ -20,6 +24,8 @@ export type Pending = {
 	description?: string;
 	/** When it set off, to tell its skill arriving from one that was already there. */
 	startedAt: number;
+	/** Someone's skill on skilless, rather than one in a GitHub repo (`key` and `dir` then only key it). */
+	skilless?: SkillessRef;
 	/** An update of a skill already in the library: its own row shows the spinner, not a new one. */
 	update?: boolean;
 };
@@ -67,16 +73,72 @@ class Imports {
 		const ids = new Set<string>(batch.map((pick) => pick.id));
 		this.pending = [...this.pending, ...batch];
 
-		client
-			.action(api.imports.fromGithub, {
-				picks: batch.map(({ key, dir }) => ({ key, dir })),
-				replace
+		const fromGithub = batch.filter((pick) => !pick.skilless);
+		const fromSkilless = batch.filter((pick) => pick.skilless);
+
+		Promise.all([
+			fromGithub.length > 0
+				? client.action(api.imports.fromGithub, {
+						picks: fromGithub.map(({ key, dir }) => ({ key, dir })),
+						replace
+					})
+				: null,
+			...fromSkilless.map((pick) => this.#copy(client, pick, replace))
+		])
+			.then(([github, ...skilless]) => {
+				// one report for the lot, however they came
+				const merged: Result & { conflicts: Conflict[] } = {
+					added: [...(github?.added ?? [])],
+					unchanged: [...(github?.unchanged ?? [])],
+					conflicts: [...(github?.conflicts ?? [])],
+					failed: [...(github?.failed ?? [])]
+				};
+				for (const part of skilless) {
+					merged.added.push(...part.added);
+					merged.unchanged.push(...part.unchanged);
+					merged.conflicts.push(...part.conflicts);
+					merged.failed.push(...part.failed);
+				}
+				this.#report(merged);
 			})
-			.then((result) => this.#report(result))
 			.catch(() => toast.error('Could not add those skills'))
 			.finally(() => {
 				this.pending = this.pending.filter((pick) => !ids.has(pick.id));
 			});
+	}
+
+	/** One skill from skilless, as a report the same shape as GitHub's. */
+	async #copy(client: Client, pick: Pending, replace?: string[]) {
+		const ref = pick.skilless!;
+		const result = await client.action(api.imports.fromSkilless, {
+			username: ref.username,
+			name: ref.name,
+			replace: replace?.includes(ref.name) ?? false
+		});
+		const report = {
+			added: [] as string[],
+			unchanged: [] as string[],
+			conflicts: [] as Conflict[],
+			failed: [] as Result['failed']
+		};
+		if (result.status === 'added') report.added.push(result.name);
+		else if (result.status === 'unchanged') report.unchanged.push(result.name);
+		else if (result.status === 'conflict') {
+			report.conflicts.push({
+				key: pick.key,
+				dir: pick.dir ?? '',
+				name: result.name,
+				skilless: ref
+			});
+		} else {
+			report.failed.push({
+				key: pick.key,
+				dir: pick.dir ?? '',
+				name: ref.name,
+				reason: result.status === 'own' ? 'It is your own skill' : 'It is no longer on skilless'
+			});
+		}
+		return report;
 	}
 
 	/**
@@ -119,7 +181,8 @@ class Imports {
 							.action(api.imports.fromSkilless, {
 								username: from.username,
 								name: from.name,
-								replace: true
+								replace: true,
+								install: false
 							})
 							.then((result) =>
 								result.status === 'added'
@@ -154,7 +217,7 @@ class Imports {
 		if (chosen.length === 0) return;
 		this.start(
 			client,
-			chosen.map(({ key, dir, name }) => ({ key, dir, name })),
+			chosen.map(({ key, dir, name, skilless }) => ({ key, dir, name, skilless })),
 			chosen.map((conflict) => conflict.name)
 		);
 	}
@@ -164,7 +227,7 @@ class Imports {
 		this.reviewing = false;
 	}
 
-	#report(result: Result) {
+	#report(result: Result & { conflicts: Conflict[] }) {
 		const added = result.added.length;
 		if (added > 0) {
 			const [first] = result.added;

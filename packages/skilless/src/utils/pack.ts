@@ -122,7 +122,8 @@ function nestedFile(entry: string, parent: PackRef): string | null {
  */
 export async function resolvePack(
 	loaded: LoadedPack,
-	opts: { interactive: boolean }
+	/** `intent: 'add'` when adding it, so skilless counts each of its skills and packs as installed. */
+	opts: { interactive: boolean; intent?: 'add' }
 ): Promise<{ skills: Resolved[]; failed: string[]; uncertain: boolean }> {
 	/** The pack being added: every skill found, however deep, remembers this one. */
 	const origin = loaded.ref;
@@ -185,7 +186,7 @@ export async function resolvePack(
 
 				const address = addressOf(entry);
 				if (address) {
-					const probed = await probe(address);
+					const probed = await probe(address, { intent: opts.intent });
 					if (probed?.kind === 'pack') {
 						await collect({ ref: { url: probed.url, name: probed.pack.name }, pack: probed.pack }, [
 							...chain,

@@ -420,7 +420,9 @@ async function addFrom(
 
 	const address = addressOf(arg);
 	if (address) {
-		const found = await spin(`Fetching ${addressLabel(address)}`, () => probe(address));
+		const found = await spin(`Fetching ${addressLabel(address)}`, () =>
+			probe(address, { intent: 'add' })
+		);
 
 		if (found?.kind === 'pack') {
 			whole('A pack');
@@ -487,7 +489,7 @@ async function addFromPack(
 	const library = await load(remote, () => readLibrary(remote));
 	const existing = new Map(library.entries.map((skill) => [skill.name, skill]));
 
-	const { skills } = await resolvePack(loaded, { interactive: isInteractive });
+	const { skills } = await resolvePack(loaded, { interactive: isInteractive, intent: 'add' });
 
 	if (skills.length === 0) {
 		throw new SkillessError(`Nothing in ${label} could be added.`);

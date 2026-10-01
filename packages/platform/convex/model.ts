@@ -186,7 +186,11 @@ export async function setSource(
 	const skill = await findSkill(ctx, userId, name);
 	if (!skill) throw createConvexError(convexError.SkillNotFound());
 
-	await ctx.db.patch(skill._id, { source: source ?? undefined });
+	// a copy of somewhere else is not yours to share: it stops being public as it becomes one
+	await ctx.db.patch(skill._id, {
+		source: source ?? undefined,
+		...(source && skill.public ? { public: false } : {})
+	});
 }
 
 export async function setPublic(
@@ -197,6 +201,8 @@ export async function setPublic(
 ): Promise<void> {
 	const skill = await findSkill(ctx, userId, name);
 	if (!skill) throw createConvexError(convexError.SkillNotFound());
+	// only originals are shared: a copy from a repo, skilless or a pack stays private
+	if (value && skill.source) throw createConvexError(convexError.SkillDerived());
 
 	await ctx.db.patch(skill._id, { public: value });
 }

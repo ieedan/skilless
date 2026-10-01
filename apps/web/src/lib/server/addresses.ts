@@ -2,6 +2,7 @@ import { api } from '@skilless/platform';
 import { fetchFiles } from '@skilless/platform/client';
 import { error, json, type RequestEvent } from '@sveltejs/kit';
 import { authenticate } from './auth';
+import { countInstall, INTENT_HEADER, isAdd } from './installs';
 
 /*
  * Skills and packs at their addresses. A skill at `/skills/<user>/<skill>` is a
@@ -77,10 +78,11 @@ export function packJson(view: PackView, origin: string) {
  * Who can see it decides how it may be cached: a private one must never be
  * kept by anything between its owner and here.
  */
-export function cacheHeaders(isPublic: boolean): Record<string, string> {
+export function cacheHeaders(isPublic: boolean, adding = false): Record<string, string> {
 	return {
-		'cache-control': isPublic ? 'public, max-age=60' : 'private, no-store',
-		vary: 'authorization, cookie'
+		// an add is counted here, so it must never be answered from a cache on the way
+		'cache-control': isPublic && !adding ? 'public, max-age=60' : 'private, no-store',
+		vary: `authorization, cookie, ${INTENT_HEADER}`
 	};
 }
 
@@ -92,8 +94,11 @@ export async function packFile(event: RequestEvent & { params: { user: string; s
 	const view = await viewPack(event, event.params.user, event.params.slug);
 	if (!view) return json(NOT_FOUND, { status: 404, headers: cacheHeaders(false) });
 
+	const adding = isAdd(event.request.headers);
+	if (adding) await countInstall('pack', event.params.user, event.params.slug);
+
 	return json(packJson(view, event.url.origin), {
-		headers: cacheHeaders(view.pack.public === true)
+		headers: cacheHeaders(view.pack.public === true, adding)
 	});
 }
 

@@ -314,6 +314,7 @@
 		{skills}
 		user={data.user}
 		github={false}
+		skilless={false}
 		{isIncluded}
 		ownDisabled={alreadyGlobal}
 		onToggle={toggle}

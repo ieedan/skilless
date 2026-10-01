@@ -137,7 +137,11 @@ export type Probed =
  * can clone it instead. skilless's own addresses never fall back to git: a
  * miss there is a missing (or private) skill or pack, and says so.
  */
-export async function probe(address: string): Promise<Probed | null> {
+export async function probe(
+	address: string,
+	/** `add` when fetching to add it, which skilless counts as an install; never for an update. */
+	opts: { intent?: 'add' } = {}
+): Promise<Probed | null> {
 	const url = new URL(address);
 	const ours = isOurs(url);
 	const label = addressLabel(address);
@@ -155,6 +159,8 @@ export async function probe(address: string): Promise<Probed | null> {
 			headers: {
 				Accept: 'application/json',
 				...FEATURES,
+				// only skilless counts installs, so only skilless is told
+				...(ours && opts.intent ? { 'X-Skilless-Intent': opts.intent } : {}),
 				...(token ? { Authorization: `Bearer ${token}` } : {})
 			},
 			signal: AbortSignal.timeout(TIMEOUT_MS)

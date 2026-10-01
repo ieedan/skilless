@@ -17,12 +17,12 @@ export async function load({ params }) {
 }
 
 export const actions = {
-	rename: async ({ locals, params, request }) => {
+	/** The description only: a pack's name is its address, so it never changes. */
+	describe: async ({ locals, params, request }) => {
 		const data = await request.formData();
 		return await packWrite(() =>
-			locals.convex.mutation(api.packs.rename, {
+			locals.convex.mutation(api.packs.describe, {
 				slug: params.slug,
-				name: String(data.get('name') ?? ''),
 				description: String(data.get('description') ?? '')
 			})
 		);

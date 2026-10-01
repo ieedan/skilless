@@ -10,8 +10,8 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Modal from '$lib/components/ui/modal';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import NameInput from '$lib/components/app/name-input.svelte';
 	import { LoadingButton } from '$lib/components/ui/loading-button';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import ListToolbar from '$lib/components/app/list-toolbar.svelte';
@@ -300,20 +300,15 @@
 			<Modal.Header>
 				<Modal.Title>Create a pack</Modal.Title>
 				<Modal.Description>
-					Name it, then add skills from your library or any repository.
+					Name it, then add skills from your library, skilless, or any repository.
 				</Modal.Description>
 			</Modal.Header>
 
 			<div class="flex flex-col gap-5 py-6">
 				<div class="flex flex-col gap-2">
 					<Label for="pack-name">Name</Label>
-					<Input
-						id="pack-name"
-						name="name"
-						placeholder="Pack name"
-						autocomplete="off"
-						value={form?.name ?? ''}
-					/>
+					<!-- named as a skill is: the name is its address -->
+					<NameInput id="pack-name" placeholder="svelte-essentials" value={form?.name ?? ''} />
 				</div>
 
 				<div class="flex flex-col gap-2">

@@ -12,7 +12,9 @@
 		badge,
 		placeholder = 'Filter skills',
 		empty = 'No skills yet.',
-		mono = true
+		mono = true,
+		onSearch,
+		loading = false
 	}: {
 		items: Item[];
 		isChecked: (item: Item) => boolean;
@@ -25,16 +27,23 @@
 		mono?: boolean;
 		placeholder?: string;
 		empty?: string;
+		/**
+		 * Searching happens elsewhere, on a server: the box reports what is typed,
+		 * and `items` are already what matches.
+		 */
+		onSearch?: (query: string) => void;
+		/** A search on its way, from `onSearch`. */
+		loading?: boolean;
 	} = $props();
 
 	let query = $state('');
 	const queryTerms = $derived(terms(query));
-	const filtered = $derived(search(items, query));
+	const filtered = $derived(onSearch ? items : search(items, query));
 </script>
 
 <div class="flex min-h-0 flex-col">
 	<input
-		bind:value={query}
+		bind:value={() => query, (value) => ((query = value), onSearch?.(value))}
 		{placeholder}
 		aria-label={placeholder}
 		autocomplete="off"
@@ -42,7 +51,13 @@
 		class="h-9 w-full shrink-0 rounded-md border border-input bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 	/>
 
-	<div class="-mx-1 mt-2 max-h-[min(24rem,55dvh)] min-h-0 scroll-fade-y overflow-y-auto px-1">
+	<div
+		class={[
+			'-mx-1 mt-2 max-h-[min(24rem,55dvh)] min-h-0 scroll-fade-y overflow-y-auto px-1 transition-opacity',
+			loading && 'opacity-50'
+		]}
+		aria-busy={loading}
+	>
 		{#each filtered as item (item.id)}
 			{@const checked = isChecked(item)}
 			{@const reason = disabled?.(item)}

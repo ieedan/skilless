@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { cacheHeaders, NOT_FOUND, skillJson, viewSkill } from '$lib/server/addresses';
 import { supportsBinary, updateMessage, withBinary } from '$lib/server/clients';
+import { countInstall, isAdd } from '$lib/server/installs';
 
 /** The skill as JSON, for `skilless add`. A browser asking for HTML gets `+page.svelte` instead. */
 export async function GET(event) {
@@ -16,5 +17,10 @@ export async function GET(event) {
 		);
 	}
 
-	return json(await skillJson(view), { headers: cacheHeaders(view.skill.public === true) });
+	const adding = isAdd(event.request.headers);
+	if (adding) await countInstall('skill', event.params.user, view.skill.name);
+
+	return json(await skillJson(view), {
+		headers: cacheHeaders(view.skill.public === true, adding)
+	});
 }

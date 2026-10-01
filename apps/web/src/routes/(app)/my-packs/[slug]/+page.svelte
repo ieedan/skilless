@@ -29,7 +29,6 @@
 	import * as Modal from '$lib/components/ui/modal';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { LoadingButton } from '$lib/components/ui/loading-button';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -124,6 +123,13 @@
 			}
 			if (picked.kind === 'source') return sameSource(entry, picked.entry);
 			if (picked.kind === 'address') return entry === picked.url || sameAddress(entry, picked.url);
+			if (picked.kind === 'skilless') {
+				return (
+					named?.kind === 'skill' &&
+					named.username === picked.username &&
+					named.name === picked.name
+				);
+			}
 			const github = githubEntry(entry);
 			return github?.key === picked.key && github.subpath === (picked.dir ?? '');
 		});
@@ -198,6 +204,23 @@
 		// what a pasted link holds is the server's to say, once it has it
 		if (picked.kind === 'address') {
 			entries.add({ entry: picked.url, skill: null, repo: null, pack: null });
+			return;
+		}
+
+		// someone's public skill: its address, shown as itself straight away
+		if (picked.kind === 'skilless') {
+			entries.add({
+				entry: skillAddress(page.url.origin, picked.username, picked.name),
+				skill: {
+					username: picked.username,
+					name: picked.name,
+					description: picked.description,
+					public: true,
+					mine: picked.username === me
+				},
+				repo: null,
+				pack: null
+			});
 			return;
 		}
 
@@ -360,7 +383,7 @@
 			<DropdownMenu.Content align="end">
 				<DropdownMenu.Item onSelect={() => (editing = true)}>
 					<RiPencilLine />
-					Edit details
+					Edit description
 				</DropdownMenu.Item>
 				{#if isPublic}
 					<DropdownMenu.Item onSelect={() => setPublic(false)}>
@@ -552,7 +575,7 @@
 		<Modal.Content class="sm:max-w-md">
 			<form
 				method="POST"
-				action="?/rename"
+				action="?/describe"
 				use:enhance={() => {
 					renaming = true;
 					return async ({ result, update }) => {
@@ -563,17 +586,14 @@
 				}}
 			>
 				<Modal.Header>
-					<Modal.Title>Edit details</Modal.Title>
+					<Modal.Title>Edit description</Modal.Title>
 					<Modal.Description>
-						The name is what everyone who adds it sees their skills came from.
+						Its name is its address, so it stays as it is: anyone who added the pack keeps finding
+						it.
 					</Modal.Description>
 				</Modal.Header>
 
 				<div class="flex flex-col gap-5 py-6">
-					<div class="flex flex-col gap-2">
-						<Label for="pack-name">Name</Label>
-						<Input id="pack-name" name="name" autocomplete="off" value={pack.name} />
-					</div>
 					<div class="flex flex-col gap-2">
 						<Label for="pack-description">Description</Label>
 						<Textarea

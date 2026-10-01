@@ -105,7 +105,8 @@
 				<RiLockLine />
 				Make private
 			</Drawer.Item>
-		{:else}
+		{:else if actions.canPublish(skill)}
+			<!-- a copy from somewhere else stays private: only originals are shared -->
 			<Drawer.Item onclick={run(() => actions.setPublic(skill, true))}>
 				<RiShareLine />
 				Make public

@@ -64,12 +64,16 @@ export default defineSchema({
 		source: v.optional(sourceValidator),
 		/** Anyone can read a public skill at its address. Otherwise only its owner. */
 		public: v.optional(v.boolean()),
+		/** Every time it was added to a library, signed in or not. What browsing ranks by. */
+		installs: v.optional(v.number()),
 		deletedAt: v.optional(v.number()),
 		/** Server receive time. Display only — never compared against a client clock. */
 		updatedAt: v.number()
 	})
 		.index('by_user_and_name', ['userId', 'name'])
-		.index('by_user', ['userId']),
+		.index('by_user', ['userId'])
+		.index('by_public_and_installs', ['public', 'installs'])
+		.searchIndex('search_name', { searchField: 'name', filterFields: ['public'] }),
 
 	/**
 	 * A list of skills from anywhere, added together with `skilless add <pack>`.
@@ -98,10 +102,14 @@ export default defineSchema({
 		 */
 		skillCount: v.optional(v.number()),
 		countPartial: v.optional(v.boolean()),
+		/** Every time it was added, signed in or not. What browsing ranks by. */
+		installs: v.optional(v.number()),
 		updatedAt: v.number()
 	})
 		.index('by_user', ['userId'])
 		.index('by_user_and_slug', ['userId', 'slug'])
+		.index('by_public_and_installs', ['public', 'installs'])
+		.searchIndex('search_name', { searchField: 'name', filterFields: ['public'] })
 		/** Links between packs only: never in an address. */
 		.index('by_uuid', ['uuid']),
 
@@ -203,6 +211,21 @@ export default defineSchema({
 		),
 		scannedAt: v.number()
 	}).index('by_user_and_key', ['userId', 'key']),
+
+	/**
+	 * Installs per skill or pack per hour, so "trending" (the last 24 hours) is a
+	 * sum of a day of rows rather than a scan of every install. Hourly so a "hot"
+	 * view (this hour against the last) can come later from the same rows.
+	 */
+	installBuckets: defineTable({
+		kind: v.union(v.literal('skill'), v.literal('pack')),
+		itemId: v.union(v.id('skills'), v.id('packs')),
+		/** The hour's start, in ms. */
+		hour: v.number(),
+		count: v.number()
+	})
+		.index('by_hour', ['hour'])
+		.index('by_item_and_hour', ['itemId', 'hour']),
 
 	/** When a user's `repos` were last filled from GitHub. At most one row per user. */
 	repoSyncs: defineTable({

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
-	import { useConvexClient } from '@skilless/platform/client';
+	import { useConvexClient, useQuery } from '@skilless/platform/client';
+	import { api } from '@skilless/platform';
+	import { page } from '$app/state';
+	import { githubEntry, parseAddress } from '$lib/pack';
 	import { imports, type Pending } from '$lib/imports.svelte';
 	import { APP_NAME } from '$lib/constants';
 	import { isValidName, NAME_RULES } from '$lib/skill';
@@ -79,7 +82,7 @@
 	type SplitAction = 'create' | 'add';
 	const splitOptions: { value: SplitAction; label: string; description: string }[] = [
 		{ value: 'create', label: 'Create', description: 'Start a new skill from scratch.' },
-		{ value: 'add', label: 'Add', description: 'Copy skills in from GitHub.' }
+		{ value: 'add', label: 'Add', description: 'Copy skills in from skilless or GitHub.' }
 	];
 
 	/** What the split button's main half does: the last option picked. */
@@ -113,14 +116,37 @@
 	 * pending one gives way at once rather than the two showing side by side.
 	 */
 	function landed(pick: Pending) {
-		return skills.some(
-			(skill) =>
-				skill.source !== undefined &&
+		return skills.some((skill) => {
+			if (!skill.source || skill.updatedAt < pick.startedAt - SKEW_MS) return false;
+			if (pick.skilless) return copies(skill, pick.skilless.username, pick.skilless.name);
+			return (
 				repoKeyOfUrl(skill.source.url) === pick.key &&
-				(pick.dir === null || skill.source.path === pick.dir) &&
-				skill.updatedAt >= pick.startedAt - SKEW_MS
-		);
+				(pick.dir === null || skill.source.path === pick.dir)
+			);
+		});
 	}
+
+	/** Whether a skill of yours is a copy of someone's on skilless. */
+	function copies(skill: Skill, username: string, name: string) {
+		const address = skill.source ? parseAddress(skill.source.url) : null;
+		return address?.kind === 'skill' && address.username === username && address.name === name;
+	}
+
+	/** Yours, so every address this page builds is under it. */
+	const me = $derived((page.data.username as string | null | undefined) ?? '');
+
+	/** Why a skill on skilless cannot be picked: it is yours, you have it, or it is on its way. */
+	function skillessTaken(username: string, name: string): string | undefined {
+		if (username === me) return 'Your own skill';
+		if (skills.some((skill) => copies(skill, username, name))) return 'Already in your library';
+		const coming = imports.pending.some(
+			(pick) => pick.skilless?.username === username && pick.skilless.name === name
+		);
+		return coming ? 'Being added' : undefined;
+	}
+
+	/** Your packs, whose skills can be picked one at a time. */
+	const packList = useQuery(api.packs.list, {});
 	// an update shows on the skill's own row instead (see SkillRow)
 	const pendingRows = $derived(imports.pending.filter((pick) => !pick.update && !landed(pick)));
 
@@ -162,7 +188,9 @@
 	const chosen = $derived.by(() => {
 		const repos: Record<string, number> = {};
 		for (const key of Object.keys(owned)) repos[key] = 0;
-		for (const pick of pickList) repos[pick.key] = (repos[pick.key] ?? 0) + 1;
+		for (const pick of pickList) {
+			if (!pick.skilless) repos[pick.key] = (repos[pick.key] ?? 0) + 1;
+		}
 		return repos;
 	});
 
@@ -179,17 +207,52 @@
 			.join(' · ');
 	}
 
-	const toPick = (picked: Picked): Pick | null =>
-		picked.kind === 'repo'
-			? {
-					key: picked.key,
-					dir: picked.dir,
-					name: picked.skill?.name,
-					description: picked.skill?.description ?? picked.description ?? undefined
-				}
-			: null;
+	/** Someone's skill on skilless, keyed apart from any repo. */
+	const skillessPick = (username: string, name: string, description?: string): Pick => ({
+		key: `@${username}/${name}`,
+		dir: null,
+		name,
+		description,
+		skilless: { username, name }
+	});
+
+	function toPick(picked: Picked): Pick | null {
+		if (picked.kind === 'repo') {
+			return {
+				key: picked.key,
+				dir: picked.dir,
+				name: picked.skill?.name,
+				description: picked.skill?.description ?? picked.description ?? undefined
+			};
+		}
+		if (picked.kind === 'skilless') {
+			return skillessPick(picked.username, picked.name, picked.description);
+		}
+		// one skill out of a pack: whatever its own entry is
+		if (picked.kind === 'source') {
+			const address = parseAddress(picked.entry);
+			if (address?.kind === 'skill') {
+				return skillessPick(address.username, address.name, picked.skill.description);
+			}
+			const github = githubEntry(picked.entry);
+			return github
+				? {
+						key: github.key,
+						dir: github.subpath,
+						name: picked.skill.name,
+						description: picked.skill.description
+					}
+				: null;
+		}
+		return null;
+	}
 
 	function togglePick(picked: Picked, included: boolean) {
+		// a pack hosted elsewhere has to be read by the CLI, which can fetch anything
+		if (picked.kind === 'address') {
+			toast.info('A pack from another site can be added with the CLI: skilless add <link>');
+			return;
+		}
 		const pick = toPick(picked);
 		if (!pick) return;
 		const id = pickId(pick);
@@ -199,7 +262,7 @@
 
 	/** "2 skills and 1 whole repository", for the Add button's company. */
 	const pickedLabel = $derived.by(() => {
-		const whole = pickList.filter((pick) => pick.dir === null).length;
+		const whole = pickList.filter((pick) => pick.dir === null && !pick.skilless).length;
 		const single = pickList.length - whole;
 		return [
 			single > 0 && count(single),
@@ -216,7 +279,7 @@
 		picks = {};
 	}
 
-	/** Which of the conflicts to replace with the copy from GitHub. */
+	/** Which of the conflicts to replace with the copy from where it came from. */
 	let replacing = $state<string[]>([]);
 
 	/** The rules only earn their space once the name actually breaks one. */
@@ -254,7 +317,10 @@
 			: `${verb} ${eligible.length} ${rest}`;
 	const globalable = $derived(selected.filter((skill) => !isGlobal(skill)));
 	const localable = $derived(selected.filter((skill) => isGlobal(skill)));
-	const publishable = $derived(selected.filter((skill) => !actions.isPublic(skill)));
+	// copies of someone else's skills are left out: only originals can be public
+	const publishable = $derived(
+		selected.filter((skill) => !actions.isPublic(skill) && actions.canPublish(skill))
+	);
 	const privatable = $derived(selected.filter((skill) => actions.isPublic(skill)));
 	const updatable = $derived(
 		selected.filter((skill) => actions.canUpdate(skill) && !imports.isUpdating(skill.name))
@@ -519,7 +585,14 @@
 					{#if pick.name}
 						<span class="shrink-0 text-xs text-muted-foreground">0 projects</span>
 					{/if}
-					<SkillOrigin source={{ url: `https://${pick.key}.git`, path: pick.dir ?? '' }} />
+					<SkillOrigin
+						source={pick.skilless
+							? {
+									url: `${page.url.origin}/skills/${pick.skilless.username}/${pick.skilless.name}`,
+									path: ''
+								}
+							: { url: `https://${pick.key}.git`, path: pick.dir ?? '' }}
+					/>
 				{/snippet}
 			</ListRow>
 		{/each}
@@ -615,6 +688,9 @@
 	chosenHeading="Added or selected"
 	{chosenLabel}
 	repoTaken={taken}
+	{skillessTaken}
+	packs={packList.data ?? []}
+	wholePacks={false}
 	followsRepo={false}
 	onToggle={togglePick}
 >
@@ -641,7 +717,7 @@
 		<Modal.Description class="text-left">
 			You have {imports.conflicts.length === 1 ? 'a different skill' : 'different skills'} by
 			{imports.conflicts.length === 1 ? 'this name' : 'these names'}. Tick any to replace with the
-			copy from GitHub; the rest stay as they are.
+			copy you picked; the rest stay as they are.
 		</Modal.Description>
 
 		<div class="flex min-h-0 flex-col pt-4">

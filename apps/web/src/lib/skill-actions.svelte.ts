@@ -112,6 +112,11 @@ export class SkillActions {
 	/** Made with the page, so this is too: see where each `SkillActions` is created. */
 	#client = useConvexClient();
 
+	/** Only skills you made can be public: one copied from a repo, skilless or a pack cannot. */
+	canPublish(skill: MenuSkill) {
+		return !skill.source;
+	}
+
 	/**
 	 * Whether there is anything to fetch from its source. A skill on skilless is
 	 * known live, so a copy that matches its original has nothing to take; a

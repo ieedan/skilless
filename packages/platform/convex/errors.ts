@@ -30,12 +30,17 @@ export const convexError = errf.create({
 	SkillNameTaken: {
 		code: 'SKILL_NAME_TAKEN',
 		message: 'Skill name taken',
-		userMessage: 'Rename the existing skill before restoring this one'
+		userMessage: 'You have a skill by that name. Delete it before restoring this one.'
 	},
 	SkillChanged: {
 		code: 'SKILL_CHANGED',
 		message: 'Skill changed during write',
 		userMessage: 'That skill changed while saving, please try again'
+	},
+	SkillDerived: {
+		code: 'SKILL_DERIVED',
+		message: 'Skill derived',
+		userMessage: 'Only skills you made can be public. This one was copied from somewhere else.'
 	},
 	SkillTooLarge: {
 		code: 'SKILL_TOO_LARGE',

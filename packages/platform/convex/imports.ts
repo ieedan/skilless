@@ -234,7 +234,13 @@ export type CopyResult =
  * update` keeps it in step with the original.
  */
 export const fromSkilless = action({
-	args: { username: v.string(), name: v.string(), replace: v.optional(v.boolean()) },
+	args: {
+		username: v.string(),
+		name: v.string(),
+		replace: v.optional(v.boolean()),
+		/** Counts as an install, as an add does. An update from its source is not one. */
+		install: v.optional(v.boolean())
+	},
 	handler: async (ctx, args): Promise<CopyResult> => {
 		const userId = await requireUser(ctx);
 		const found = await ctx.runQuery(internal.skills.forCopy, {
@@ -269,6 +275,9 @@ export const fromSkilless = action({
 			});
 		}
 		await ctx.runMutation(internal.skills.setSource, { userId, name: found.name, source });
+		if (args.install !== false) {
+			await ctx.runMutation(internal.installs.record, { kind: 'skill', id: found.id });
+		}
 		return { status: unchanged ? 'unchanged' : 'added', name: found.name };
 	}
 });

@@ -59,8 +59,8 @@ export function discoverDirs(all: string[], subpath = ''): string[] {
 	return [...found];
 }
 
-/** A name that survives a library: what the CLI's `isValidName` accepts. */
-function isValidName(name: string): boolean {
+/** A name that survives a library: what the CLI's `isValidName` accepts. Packs are named the same way. */
+export function isValidName(name: string): boolean {
 	return name.length <= 64 && /^[a-z0-9][a-z0-9._-]*$/.test(name);
 }
 

@@ -43,6 +43,8 @@
 	 */
 	export type Picked =
 		| { kind: 'own'; skill: OwnSkill }
+		/** Someone's public skill on skilless, found by searching. */
+		| { kind: 'skilless'; username: string; name: string; description?: string }
 		| { kind: 'pack'; pack: PackInfo }
 		| { kind: 'source'; entry: string; skill: { name: string; description?: string } }
 		| { kind: 'address'; url: string }
@@ -74,6 +76,7 @@
 	import ProjectIcon from './project-icon.svelte';
 	import SearchInput from './search-input.svelte';
 	import SkillChecklist from './skill-checklist.svelte';
+	import LogoMark from './logo-mark.svelte';
 	import RiArrowLeftLine from 'remixicon-svelte/icons/arrow-left-line';
 	import RiArrowRightSLine from 'remixicon-svelte/icons/arrow-right-s-line';
 	import RiCheckLine from 'remixicon-svelte/icons/check-line';
@@ -95,6 +98,9 @@
 		repoTaken,
 		chosenHeading = 'Selected',
 		chosenLabel,
+		skilless = true,
+		wholePacks = true,
+		skillessTaken,
 		footer
 	}: {
 		open?: boolean;
@@ -125,6 +131,12 @@
 		chosenHeading?: string;
 		/** The badge on a `chosen` repo, in place of how many are selected. */
 		chosenLabel?: (key: string) => string;
+		/** Offer searching public skills on skilless. */
+		skilless?: boolean;
+		/** Offer a pack whole, following it. Off where only skills can be taken, like your library. */
+		wholePacks?: boolean;
+		/** Why a skill on skilless is already there, e.g. you have a copy: shown ticked, and locked. */
+		skillessTaken?: (username: string, name: string) => string | undefined;
 		/** In place of Done, wherever skills are ticked. */
 		footer?: Snippet;
 	} = $props();
@@ -132,6 +144,7 @@
 	type Step =
 		| { name: 'choose' }
 		| { name: 'mine' }
+		| { name: 'skilless' }
 		| { name: 'packs' }
 		| { name: 'pack'; username: string; slug: string }
 		| { name: 'repos' }
@@ -139,9 +152,15 @@
 
 	/** With one source, there is nothing to choose between. */
 	const start = (): Step => {
-		const sources = [skills && 'mine', github && 'repos', packs && 'packs'].filter(Boolean);
+		const sources = [
+			skills && 'mine',
+			skilless && 'skilless',
+			github && 'repos',
+			packs && 'packs'
+		].filter(Boolean);
 		if (sources.length > 1) return { name: 'choose' };
-		return { name: sources[0] === 'repos' ? 'repos' : 'mine' };
+		const only = sources[0];
+		return { name: only === 'repos' ? 'repos' : only === 'skilless' ? 'skilless' : 'mine' };
 	};
 	const first = $derived(start());
 
@@ -153,7 +172,54 @@
 	const client = useConvexClient();
 	const repos = new UseRepos();
 
+	/** Who is picking, for the picture on their own packs: as given, else the signed in user. */
+	const me = $derived({
+		seed: user?.seed ?? page.data.user?.seed ?? '',
+		image: user?.image ?? page.data.user?.image ?? null
+	});
+
 	const own = $derived((skills ?? []).map((skill) => ({ ...skill, id: skill._id })));
+
+	/* --------------------------------------------------------- skilless */
+
+	/** What is typed; the search follows once typing pauses. */
+	let skillessSearch = $state('');
+	let skillessTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function onSkillessSearch(value: string) {
+		clearTimeout(skillessTimer);
+		skillessTimer = setTimeout(() => (skillessSearch = value.trim()), 250);
+	}
+
+	/** Public skills: the most installed, until something is typed, then what matches. */
+	const found = useQuery(api.installs.browse, () =>
+		step.name === 'skilless'
+			? {
+					kind: 'skill' as const,
+					window: 'all' as const,
+					// yours are never here: a skill cannot be added from itself
+					exceptMine: true,
+					...(skillessSearch ? { search: skillessSearch } : {})
+				}
+			: 'skip'
+	);
+	const skillessItems = $derived(
+		(found.data ?? [])
+			// the server leaves yours out once it knows who you are; this covers before it does
+			.filter((row) => row.username !== page.data.username)
+			.map((row) => ({
+				id: `${row.username}/${row.name}`,
+				name: row.name,
+				username: row.username,
+				description: row.description ?? undefined
+			}))
+	);
+	const asSkilless = (item: { username: string; name: string; description?: string }): Picked => ({
+		kind: 'skilless',
+		username: item.username,
+		name: item.name,
+		description: item.description
+	});
 
 	/* ------------------------------------------------------------ packs */
 
@@ -423,6 +489,7 @@
 		{
 			choose: 'Where would you like to add skills from?',
 			mine: 'Pick skills from your personal library.',
+			skilless: 'Search public skills on skilless, or type @user to see someone’s.',
 			packs: 'Pick one of your packs, or paste the link to anyone’s.',
 			pack: opened.data?.pack.description ?? 'Pick skills from this pack.',
 			repos: 'Pick a repository, or type owner/ to see anyone’s public ones.',
@@ -434,6 +501,7 @@
 		{
 			choose: 'Add skills',
 			mine: first.name === 'mine' ? 'Add skills' : 'Your skills',
+			skilless: first.name === 'skilless' ? 'Add skills' : 'From skilless',
 			packs: 'From a pack',
 			pack: opened.data?.pack.name ?? 'From a pack',
 			repos: 'From GitHub',
@@ -450,6 +518,7 @@
 		step = first;
 		query = '';
 		address = '';
+		skillessSearch = '';
 		clearTimeout(searchTimer);
 		// the scan cap is per sitting
 		requested = [];
@@ -501,6 +570,25 @@
 						</button>
 					{/if}
 
+					{#if skilless}
+						<button
+							type="button"
+							onclick={() => (step = { name: 'skilless' })}
+							class="flex items-center gap-3.5 rounded-lg border border-border px-4 py-3.5 text-left transition-colors hover:bg-accent"
+						>
+							<span class="flex size-8 shrink-0 items-center justify-center text-foreground">
+								<LogoMark class="size-6" />
+							</span>
+							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+								<span class="text-sm font-medium text-card-foreground">Add from skilless</span>
+								<span class="text-[13px] text-muted-foreground">
+									Public skills anyone has shared on skilless.
+								</span>
+							</span>
+							<RiArrowRightSLine class="size-4 text-muted-foreground" aria-hidden="true" />
+						</button>
+					{/if}
+
 					{#if github}
 						<button
 							type="button"
@@ -532,7 +620,9 @@
 							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span class="text-sm font-medium text-card-foreground">Add from a pack</span>
 								<span class="text-[13px] text-muted-foreground">
-									Every skill in a pack, or just some of them.
+									{wholePacks
+										? 'Every skill in a pack, or just some of them.'
+										: 'Pick skills out of a pack.'}
 								</span>
 							</span>
 							<RiArrowRightSLine class="size-4 text-muted-foreground" aria-hidden="true" />
@@ -550,6 +640,22 @@
 						{#if sharing && !skill.public}
 							<RiLockLine class="size-3.5 shrink-0 text-muted-foreground" aria-label="Private" />
 						{/if}
+					{/snippet}
+				</SkillChecklist>
+			{:else if step.name === 'skilless'}
+				<SkillChecklist
+					items={skillessItems}
+					placeholder="Search skills, or @user/skill"
+					empty={skillessSearch ? 'No public skills match.' : 'No public skills yet.'}
+					onSearch={onSkillessSearch}
+					loading={found.isLoading}
+					isChecked={(item) =>
+						skillessTaken?.(item.username, item.name) !== undefined || isIncluded(asSkilless(item))}
+					disabled={(item) => skillessTaken?.(item.username, item.name)}
+					onToggle={(item, checked) => onToggle(asSkilless(item), checked)}
+				>
+					{#snippet badge(item)}
+						<span class="shrink-0 text-xs text-muted-foreground">@{item.username}</span>
 					{/snippet}
 				</SkillChecklist>
 			{:else if step.name === 'packs'}
@@ -575,12 +681,17 @@
 								(step = { name: 'pack', username: page.data.username ?? '', slug: pack.slug })}
 							class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:bg-accent"
 						>
-							<Avatar seed={user?.seed ?? pack.name} src={user?.image ?? null} size={32} />
+							<!-- yours: your picture and username, as every page outside shows a pack's owner -->
+							<Avatar seed={me.seed} src={me.image} size={32} />
 							<span class="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span class="flex min-w-0 items-center gap-2">
 									<span class="truncate text-[13px] font-semibold text-card-foreground">
 										{pack.name}
 									</span>
+									{#if page.data.username}
+										<span class="shrink-0 text-xs text-muted-foreground">@{page.data.username}</span
+										>
+									{/if}
 									{#if !pack.public}
 										<RiLockLine
 											class="size-3.5 shrink-0 text-muted-foreground"
@@ -623,33 +734,35 @@
 						No skills in this pack that you can see.
 					</p>
 				{:else}
-					<!-- the whole pack is its own entry: it follows the pack, so new skills come too -->
-					<button
-						type="button"
-						role="checkbox"
-						aria-checked={wholePackIncluded}
-						disabled={wholePackDisabled !== undefined && !wholePackIncluded}
-						onclick={() => wholePack && onToggle(wholePack, !wholePackIncluded)}
-						class="mb-2 flex w-full items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-60 disabled:hover:bg-transparent"
-					>
-						<span
-							class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {wholePackIncluded
-								? 'border-primary bg-primary text-primary-foreground'
-								: 'border-input'}"
+					{#if wholePacks}
+						<!-- the whole pack is its own entry: it follows the pack, so new skills come too -->
+						<button
+							type="button"
+							role="checkbox"
+							aria-checked={wholePackIncluded}
+							disabled={wholePackDisabled !== undefined && !wholePackIncluded}
+							onclick={() => wholePack && onToggle(wholePack, !wholePackIncluded)}
+							class="mb-2 flex w-full items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:opacity-60 disabled:hover:bg-transparent"
 						>
-							{#if wholePackIncluded}<RiCheckLine class="size-3" aria-hidden="true" />{/if}
-						</span>
-						<span class="flex min-w-0 flex-col gap-0.5">
-							<span class="font-medium text-card-foreground">Every skill in this pack</span>
-							<span class="text-xs text-muted-foreground">
-								{#if wholePackDisabled && !wholePackIncluded}
-									{wholePackDisabled}. Its skills can still be picked one by one.
-								{:else}
-									All {opened.data.skills.length}, and any it gains later.
-								{/if}
+							<span
+								class="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors {wholePackIncluded
+									? 'border-primary bg-primary text-primary-foreground'
+									: 'border-input'}"
+							>
+								{#if wholePackIncluded}<RiCheckLine class="size-3" aria-hidden="true" />{/if}
 							</span>
-						</span>
-					</button>
+							<span class="flex min-w-0 flex-col gap-0.5">
+								<span class="font-medium text-card-foreground">Every skill in this pack</span>
+								<span class="text-xs text-muted-foreground">
+									{#if wholePackDisabled && !wholePackIncluded}
+										{wholePackDisabled}. Its skills can still be picked one by one.
+									{:else}
+										All {opened.data.skills.length}, and any it gains later.
+									{/if}
+								</span>
+							</span>
+						</button>
+					{/if}
 
 					<SkillChecklist
 						items={packSkills}
@@ -837,7 +950,7 @@
 		</div>
 
 		<!-- only where skills are ticked; the steps before only lead somewhere -->
-		{#if step.name === 'mine' || step.name === 'pack' || step.name === 'repo' || (footer && (step.name === 'repos' || step.name === 'packs'))}
+		{#if step.name === 'mine' || step.name === 'skilless' || step.name === 'pack' || step.name === 'repo' || (footer && (step.name === 'repos' || step.name === 'packs'))}
 			<Modal.Footer class="pt-4">
 				{#if footer}
 					{@render footer()}

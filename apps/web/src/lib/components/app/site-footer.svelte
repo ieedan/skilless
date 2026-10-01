@@ -2,6 +2,7 @@
 	import { APP_NAME } from '$lib/constants';
 	import { cn } from '$lib/utils';
 	import Logo from './logo.svelte';
+	import { SITE_WIDTH } from './site-header.svelte';
 
 	/** The footer shared by the marketing page and the docs. */
 	let {
@@ -16,6 +17,13 @@
 	const year = new Date().getFullYear();
 
 	const groups = $derived([
+		{
+			title: 'Browse',
+			links: [
+				{ label: 'Skills', href: '/skills' },
+				{ label: 'Packs', href: '/packs' }
+			]
+		},
 		{
 			title: 'Docs',
 			links: [
@@ -45,7 +53,8 @@
 <footer class="border-t border-border">
 	<div
 		class={cn(
-			'mx-auto flex w-full max-w-5xl flex-col gap-12 px-6 py-14 md:flex-row md:justify-between',
+			'mx-auto flex w-full flex-col gap-12 py-14 md:flex-row md:justify-between',
+			SITE_WIDTH,
 			className
 		)}
 	>
@@ -57,7 +66,7 @@
 			<p class="text-sm text-muted-foreground">© {year} {APP_NAME}</p>
 		</div>
 
-		<nav aria-label="Footer" class="grid grid-cols-2 gap-x-12 gap-y-8 sm:grid-cols-3">
+		<nav aria-label="Footer" class="grid grid-cols-2 gap-x-12 gap-y-8 sm:grid-cols-4">
 			{#each groups as group (group.title)}
 				<div class="flex flex-col gap-3">
 					<h2 class="text-sm font-medium">{group.title}</h2>

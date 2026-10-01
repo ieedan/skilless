@@ -217,6 +217,7 @@ export const forCopy = internalQuery({
 		const skill = await model.findSkillAt(ctx, args.username, args.name);
 		if (!skill || !model.canView(skill, args.viewerId)) return null;
 		return {
+			id: skill._id,
 			name: skill.name,
 			mine: skill.userId === args.viewerId,
 			files: await model.fileRows(ctx, skill._id)
@@ -250,6 +251,24 @@ export const dropSelfSources = internalMutation({
 			dropped++;
 		}
 		return { dropped };
+	}
+});
+
+/**
+ * Makes private every public skill that was copied from somewhere else, from
+ * before only originals could be public. Safe to run again:
+ * `npx convex run skills:privatizeDerived`.
+ */
+export const privatizeDerived = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ made: number }> => {
+		let made = 0;
+		for (const skill of await ctx.db.query('skills').collect()) {
+			if (!skill.public || !skill.source) continue;
+			await ctx.db.patch(skill._id, { public: false });
+			made++;
+		}
+		return { made };
 	}
 });
 

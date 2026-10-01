@@ -97,7 +97,8 @@
 				<RiLockLine />
 				Make private
 			</DropdownMenu.Item>
-		{:else}
+		{:else if actions.canPublish(skill)}
+			<!-- a copy from somewhere else stays private: only originals are shared -->
 			<DropdownMenu.Item onSelect={() => actions.setPublic(skill, true)}>
 				<RiShareLine />
 				Make public

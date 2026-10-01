@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import type { MutationCtx } from './_generated/server';
 import { convexError, createConvexError } from './errors';
+import { isValidName } from './discover';
 import * as model from './model';
 import { internalMutation } from './_generated/server';
 import { mutation, query, requireUser, secretMutation, secretQuery } from './utils';
@@ -13,40 +14,32 @@ import { mutation, query, requireUser, secretMutation, secretQuery } from './uti
 
 const MAX_ENTRIES = 200;
 const MAX_ENTRY = 500;
-const MAX_NAME = 100;
 const MAX_DESCRIPTION = 500;
-const MAX_SLUG = 60;
-
-/** A pack's address from its name: lowercase words joined by dashes. */
-function slugify(name: string): string {
-	const slug = name
-		.normalize('NFKD')
-		.replace(/[\u0300-\u036f]/g, '')
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, MAX_SLUG)
-		.replace(/-+$/, '');
-	return slug || 'pack';
-}
-
-/** A slug for `name` that none of the user's other packs has: `-2`, `-3` on after the first. */
-async function uniqueSlug(ctx: MutationCtx, userId: string, name: string): Promise<string> {
-	const base = slugify(name);
-	let slug = base;
-	for (let n = 2; await model.findPackBySlug(ctx, userId, slug); n++) slug = `${base}-${n}`;
-	return slug;
-}
 
 function invalid(reason: string): never {
 	throw createConvexError(convexError.InvalidPack({ reason }));
 }
 
+/**
+ * A pack is named as a skill is: lowercase, and safe in a URL, since its name
+ * is its address, `skilless.dev/packs/<username>/<name>`.
+ */
 function cleanName(name: string): string {
 	const trimmed = name.trim();
 	if (!trimmed) invalid('a pack needs a name');
-	if (trimmed.length > MAX_NAME) invalid(`names are limited to ${MAX_NAME} characters`);
+	if (!isValidName(trimmed)) {
+		invalid(
+			'use lowercase letters, digits, dots, dashes and underscores, starting with a letter or digit'
+		);
+	}
 	return trimmed;
+}
+
+/** Refuses a name another of the user's packs has. */
+async function assertFree(ctx: MutationCtx, userId: string, name: string) {
+	if (await model.findPackBySlug(ctx, userId, name)) {
+		invalid(`you already have a pack called ${name}`);
+	}
 }
 
 function cleanDescription(description: string): string | undefined {
@@ -67,7 +60,6 @@ function cleanEntries(entries: string[]): string[] {
 }
 
 type Change = Partial<{
-	name: string;
 	description: string | undefined;
 	skills: string[];
 	public: boolean;
@@ -140,7 +132,9 @@ async function createFor(
 	args: { name: string; description: string; skills?: string[]; public?: boolean }
 ): Promise<string> {
 	const name = cleanName(args.name);
-	const slug = await uniqueSlug(ctx, userId, name);
+	await assertFree(ctx, userId, name);
+	// the name is the address
+	const slug = name;
 
 	const id = await ctx.db.insert('packs', {
 		userId,
@@ -230,13 +224,14 @@ export const create = mutation({
 	}
 });
 
-export const rename = mutation({
-	args: { slug: v.string(), name: v.string(), description: v.string() },
+/**
+ * Changes a pack's description. Its name never changes: the name is its
+ * address, which people and other packs have added it by.
+ */
+export const describe = mutation({
+	args: { slug: v.string(), description: v.string() },
 	handler: async (ctx, args) => {
-		await patch(ctx, args.slug, () => ({
-			name: cleanName(args.name),
-			description: cleanDescription(args.description)
-		}));
+		await patch(ctx, args.slug, () => ({ description: cleanDescription(args.description) }));
 	}
 });
 
