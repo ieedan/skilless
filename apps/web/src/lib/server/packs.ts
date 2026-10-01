@@ -23,7 +23,7 @@ export async function packWrite<T>(write: () => Promise<T>) {
 }
 
 type PackDoc = {
-	uuid: string;
+	slug: string;
 	name: string;
 	description?: string;
 	public?: boolean;
@@ -32,16 +32,19 @@ type PackDoc = {
 	countPartial?: boolean;
 };
 
-/** A pack as the API and MCP hand it out. Never its `_id` or `userId`. */
-export function toPack(pack: PackDoc, origin: string) {
+/**
+ * A pack as the API and MCP hand it out. Never its `_id`, `userId` or internal
+ * uuid: its `id` is its slug, unique among the owner's packs.
+ */
+export function toPack(pack: PackDoc, origin: string, username: string | null) {
 	return {
-		id: pack.uuid,
+		id: pack.slug,
 		name: pack.name,
 		description: pack.description ?? null,
 		public: pack.public === true,
 		skills: pack.skills,
 		skillCount: pack.skillCount ?? pack.skills.length,
 		countPartial: pack.skillCount === undefined || pack.countPartial === true,
-		url: packAddress(origin, pack.uuid)
+		url: username ? packAddress(origin, username, pack.slug) : null
 	};
 }

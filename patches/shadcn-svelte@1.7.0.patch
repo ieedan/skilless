@@ -1,0 +1,119 @@
+diff --git a/dist/tailwind.css b/dist/tailwind.css
+index d110ab0dd1cb9d051f7fe79f17c2f1d80f47ac1f..8366037cef936f6bf141342987bb2fbd0b5d2b2f 100644
+--- a/dist/tailwind.css
++++ b/dist/tailwind.css
+@@ -89,6 +89,12 @@
+ }
+ 
+ /* scroll-fade */
++/*
++ * Without scroll-driven animations (Firefox), there is no telling how far a
++ * scroller is scrolled, so no edge fades: every --scroll-fade-* edge stays at
++ * its initial 0px. Fading every edge regardless would dim the first item of a
++ * list that is at its top, and the last of one at its bottom.
++ */
+ @property --scroll-fade-t {
+ 	syntax: "<length-percentage>";
+ 	inherits: false;
+@@ -194,11 +200,6 @@
+ 			calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-t: var(--_scroll-fade-size-t);
+-		--scroll-fade-b: var(--_scroll-fade-size-b);
+-	}
+ }
+ 
+ @utility scroll-fade-y {
+@@ -234,11 +235,6 @@
+ 			calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-t: var(--_scroll-fade-size-t);
+-		--scroll-fade-b: var(--_scroll-fade-size-b);
+-	}
+ }
+ 
+ @utility scroll-fade-x {
+@@ -283,11 +279,6 @@
+ 			calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-s: var(--_scroll-fade-size-s);
+-		--scroll-fade-e: var(--_scroll-fade-size-e);
+-	}
+ }
+ 
+ @utility scroll-fade-t {
+@@ -314,10 +305,6 @@
+ 		animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-t: var(--_scroll-fade-size-t);
+-	}
+ }
+ 
+ @utility scroll-fade-b {
+@@ -344,10 +331,6 @@
+ 		animation-range: calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-b: var(--_scroll-fade-size-b);
+-	}
+ }
+ 
+ @utility scroll-fade-l {
+@@ -374,10 +357,6 @@
+ 		animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-s: var(--_scroll-fade-size-s);
+-	}
+ }
+ 
+ @utility scroll-fade-r {
+@@ -404,10 +383,6 @@
+ 		animation-range: calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-e: var(--_scroll-fade-size-e);
+-	}
+ }
+ 
+ @utility scroll-fade-s {
+@@ -442,10 +417,6 @@
+ 		animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-s: var(--_scroll-fade-size-s);
+-	}
+ }
+ 
+ @utility scroll-fade-e {
+@@ -480,10 +451,6 @@
+ 		animation-range: calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+ 		animation-fill-mode: both;
+ 	}
+-
+-	@supports not (animation-timeline: scroll()) {
+-		--scroll-fade-e: var(--_scroll-fade-size-e);
+-	}
+ }
+ 
+ @utility scroll-fade-* {

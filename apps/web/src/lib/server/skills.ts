@@ -18,7 +18,6 @@ type SkillDoc = {
 	updatedAt: number;
 	global?: boolean;
 	source?: SkillSource;
-	uuid?: string;
 };
 
 /** Never hand back `_id` or `userId` — no client has a use for them. */
@@ -29,9 +28,7 @@ export function toSkill(doc: SkillDoc) {
 		editedAt: doc.editedAt,
 		updatedAt: doc.updatedAt,
 		global: doc.global ?? false,
-		source: doc.source ?? null,
-		/** Its address is `/skills/<id>`. */
-		id: doc.uuid ?? null
+		source: doc.source ?? null
 	};
 }
 

@@ -2,7 +2,6 @@
 	/** One of your skills, as the picker lists it. */
 	export type OwnSkill = {
 		_id: string;
-		uuid?: string;
 		name: string;
 		description?: string;
 		public?: boolean;
@@ -11,7 +10,7 @@
 	/** One of your packs, as the picker lists it. */
 	export type OwnPack = {
 		_id: string;
-		uuid: string;
+		slug: string;
 		name: string;
 		description?: string;
 		public?: boolean;
@@ -22,7 +21,9 @@
 
 	/** A pack, as picked: one of yours, or anyone's opened by its link. */
 	export type PackInfo = {
-		uuid: string;
+		/** Its owner's username and its slug: its address. */
+		username: string;
+		slug: string;
 		name: string;
 		description?: string;
 		public?: boolean;
@@ -30,7 +31,7 @@
 		countPartial?: boolean;
 		/** Its entries, when known: what a loop check follows. */
 		skills?: string[];
-		owner?: { name: string; image: string | null };
+		owner?: { name: string; image: string | null; username: string | null };
 	};
 
 	/**
@@ -60,7 +61,8 @@
 	import { api } from '@skilless/platform';
 	import { useConvexClient, useQuery } from '@skilless/platform/client';
 	import { projectParts } from '$lib/project';
-	import { packUuid, typedRepoKey } from '$lib/pack';
+	import { parseAddress, typedRepoKey } from '$lib/pack';
+	import { page } from '$app/state';
 	import { search } from '$lib/search';
 	import { UseRepos } from '$lib/hooks/use-repos.svelte';
 	import * as Modal from '$lib/components/ui/modal';
@@ -131,7 +133,7 @@
 		| { name: 'choose' }
 		| { name: 'mine' }
 		| { name: 'packs' }
-		| { name: 'pack'; uuid: string }
+		| { name: 'pack'; username: string; slug: string }
 		| { name: 'repos' }
 		| { name: 'repo'; key: string };
 
@@ -151,9 +153,7 @@
 	const client = useConvexClient();
 	const repos = new UseRepos();
 
-	const own = $derived(
-		(skills ?? []).filter((skill) => skill.uuid).map((skill) => ({ ...skill, id: skill._id }))
-	);
+	const own = $derived((skills ?? []).map((skill) => ({ ...skill, id: skill._id })));
 
 	/* ------------------------------------------------------------ packs */
 
@@ -166,12 +166,12 @@
 		if (!url) return;
 		address = '';
 
-		const uuid = packUuid(url);
-		if (uuid) step = { name: 'pack', uuid };
+		const named = parseAddress(url);
+		if (named?.kind === 'pack') step = { name: 'pack', username: named.username, slug: named.slug };
 		else onToggle({ kind: 'address', url }, true);
 	}
 
-	const packCount = (pack: PackInfo) => {
+	const packCount = (pack: Pick<PackInfo, 'skillCount' | 'countPartial' | 'skills'>) => {
 		const n = pack.skillCount ?? pack.skills?.length ?? 0;
 		const partial = pack.skillCount === undefined || pack.countPartial === true;
 		return `${n}${partial && n > 0 ? '+' : ''} ${n === 1 && !partial ? 'skill' : 'skills'}`;
@@ -179,10 +179,10 @@
 
 	/* ------------------------------------------------------------- pack */
 
-	const selectedPack = $derived(step.name === 'pack' ? step.uuid : null);
-	const opened = useQuery(api.packs.skillsOf, () =>
-		selectedPack ? { uuid: selectedPack } : 'skip'
+	const selectedPack = $derived(
+		step.name === 'pack' ? { username: step.username, slug: step.slug } : null
 	);
+	const opened = useQuery(api.packs.skillsOf, () => selectedPack ?? 'skip');
 
 	const wholePack = $derived<Picked | null>(
 		opened.data ? { kind: 'pack', pack: opened.data.pack } : null
@@ -568,10 +568,11 @@
 				<div
 					class="-mx-1 -mb-4 flex max-h-[min(26rem,55dvh)] min-h-0 scroll-fade-y flex-col gap-1.5 overflow-y-auto px-1 pb-4"
 				>
-					{#each packs ?? [] as pack (pack.uuid)}
+					{#each packs ?? [] as pack (pack.slug)}
 						<button
 							type="button"
-							onclick={() => (step = { name: 'pack', uuid: pack.uuid })}
+							onclick={() =>
+								(step = { name: 'pack', username: page.data.username ?? '', slug: pack.slug })}
 							class="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:bg-accent"
 						>
 							<Avatar seed={user?.seed ?? pack.name} src={user?.image ?? null} size={32} />
@@ -587,7 +588,7 @@
 										/>
 									{/if}
 									<span class="shrink-0 text-xs text-muted-foreground">{packCount(pack)}</span>
-									{#if isIncluded({ kind: 'pack', pack })}
+									{#if isIncluded( { kind: 'pack', pack: { ...pack, username: page.data.username ?? '' } } )}
 										<span
 											class="ml-auto shrink-0 rounded-full bg-primary px-1.5 py-px text-[11px] font-medium text-primary-foreground"
 										>

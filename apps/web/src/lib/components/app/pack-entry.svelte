@@ -64,7 +64,13 @@
 		return `https://${github.key}/blob/${ref}${dir}/SKILL.md`;
 	});
 
-	const href = $derived(skill ? `/skills/${skill.uuid}` : pack ? `/packs/${pack.uuid}` : repoHref);
+	const href = $derived(
+		skill
+			? `/skills/${skill.username}/${skill.name}`
+			: pack
+				? `/packs/${pack.username}/${pack.slug}`
+				: repoHref
+	);
 
 	/** Skills — on skilless, or one alone in a repo — read as code, with no picture. */
 	const isSkill = $derived(skill !== null || single !== null || parts.host === 'skilless');

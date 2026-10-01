@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import pc from 'picocolors';
 import { z } from 'zod';
 import type { ApiClient, RemotePack } from '@/utils/api';
-import { getApiUrl } from '@/utils/auth';
 import { SkillessError } from '@/utils/errors';
 import { confirm, isInteractive, log, multiselect, spin } from '@/utils/prompts';
 import { isSource } from '@/utils/source';
@@ -81,8 +80,8 @@ async function toEntries(api: ApiClient, sources: string[]): Promise<string[]> {
 
 		const skill = library.find((candidate) => candidate.name === source);
 		if (!skill) missing.push(source);
-		else if (!skill.id) unaddressed.push(source);
-		return skill?.id ? `${getApiUrl()}/skills/${skill.id}` : source;
+		else if (!skill.address) unaddressed.push(source);
+		return skill?.address ?? source;
 	});
 
 	if (missing.length > 0) {
@@ -94,7 +93,7 @@ async function toEntries(api: ApiClient, sources: string[]): Promise<string[]> {
 		throw new SkillessError(
 			`${unaddressed.join(', ')} ${unaddressed.length === 1 ? 'has' : 'have'} no address yet.`,
 			{
-				suggestion: 'Try again shortly, or add it from the Packs page on skilless.dev.'
+				suggestion: 'Sign in to skilless.dev once so your username is known, then try again.'
 			}
 		);
 	}

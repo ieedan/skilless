@@ -44,7 +44,7 @@ skilless add <repo> [skills...]
 skilless add <address>
 ```
 
-A repository is `owner/repo` or any git URL. Leave out the skills to pick from a list. An address is a skill (`skilless.dev/skills/<id>`), a pack (`skilless.dev/packs/<id>`, any URL serving one, or a pack file), and is added whole.
+A repository is `owner/repo` or any git URL. Leave out the skills to pick from a list. An address is a skill on skilless (`@user/skill`, or `skilless.dev/skills/<user>/<skill>`) or a pack (`@user/pack/<pack>`, `skilless.dev/packs/<user>/<pack>`, any URL serving one, or a pack file), and is added whole.
 
 | Option            | Description                                                               |
 | ----------------- | ------------------------------------------------------------------------- |

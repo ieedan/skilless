@@ -5,18 +5,21 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import GithubLogo from './github-logo.svelte';
 	import GitlabLogo from './gitlab-logo.svelte';
-	import RiCodeSSlashLine from 'remixicon-svelte/icons/code-s-slash-line';
+	import LogoMark from './logo-mark.svelte';
 	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 	import RiStackLine from 'remixicon-svelte/icons/stack-line';
 
 	let {
 		source,
 		soleFile,
+		contentHash,
 		badge = false
 	}: {
 		source: SkillSource;
 		/** The skill's one file, when it has just one: a repo link then goes to it, not its folder. */
 		soleFile?: string;
+		/** The skill's own hash: when it differs from the source's, it has been changed since. */
+		contentHash?: string;
 		/** A badge with a tooltip, as on the skill's page; otherwise gray text, as in the list. */
 		badge?: boolean;
 	} = $props();
@@ -32,12 +35,23 @@
 	/** Off-site links open in a new tab; a pack or skill here opens in place. */
 	const external = $derived(href !== undefined && /^https?:/i.test(href));
 
-	const tip = $derived(
+	/** Changed since it was added or last updated: still from there, but no longer what is there. */
+	const edited = $derived(
+		contentHash !== undefined && source.hash !== undefined && contentHash !== source.hash
+	);
+
+	const originTip = $derived(
 		origin?.kind === 'pack'
 			? 'Added by this pack. Updates come from where the pack points.'
 			: origin?.kind === 'skill'
 				? 'Added from this skill on skilless'
 				: 'Added from this repository'
+	);
+
+	const tip = $derived(
+		edited
+			? `${originTip.replace(/\.$/, '')}. You have changed it since, so an update from there asks before replacing your changes.`
+			: originTip
 	);
 </script>
 
@@ -45,7 +59,8 @@
 	{#if origin?.kind === 'pack'}
 		<RiStackLine class={badge ? '' : 'size-3 shrink-0'} aria-hidden="true" />
 	{:else if origin?.kind === 'skill'}
-		<RiCodeSSlashLine class={badge ? '' : 'size-3 shrink-0'} aria-hidden="true" />
+		<!-- the brand at full strength, black or white with the theme, not the muted label beside it -->
+		<LogoMark class={badge ? 'text-foreground' : 'size-3 shrink-0 text-foreground'} />
 	{:else if origin?.host === 'github'}
 		<GithubLogo class={badge ? '' : 'size-3 shrink-0'} />
 	{:else if origin?.host === 'gitlab'}
@@ -71,6 +86,7 @@
 					>
 						{@render icon()}
 						{label}
+						{#if edited}<span class="text-muted-foreground">· edited</span>{/if}
 					</svelte:element>
 				{/snippet}
 			</Tooltip.Trigger>
@@ -91,6 +107,7 @@
 		>
 			{@render icon()}
 			<span class="truncate">{label}</span>
+			{#if edited}<span class="shrink-0">· edited</span>{/if}
 		</svelte:element>
 	{/if}
 {/if}

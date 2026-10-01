@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
 	import { useConvexClient } from '@skilless/platform/client';
 	import { imports, type Pending } from '$lib/imports.svelte';
 	import { APP_NAME } from '$lib/constants';
@@ -36,6 +37,9 @@
 	import RiFileCopyLine from 'remixicon-svelte/icons/file-copy-line';
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
 	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
+	import RiShareLine from 'remixicon-svelte/icons/share-line';
+	import RiRefreshLine from 'remixicon-svelte/icons/refresh-line';
+	import RiLockLine from 'remixicon-svelte/icons/lock-line';
 
 	let { data, form } = $props();
 
@@ -89,7 +93,36 @@
 	}
 
 	/** A tick in the picker, with enough to show it in the list while it is added. */
-	type Pick = Omit<Pending, 'id'>;
+	type Pick = Omit<Pending, 'id' | 'startedAt'>;
+
+	/** `https://github.com/owner/repo.git` as a repo key: `github.com/owner/repo`. */
+	const repoKeyOfUrl = (url: string) =>
+		url
+			.toLowerCase()
+			.replace(/^https?:\/\//, '')
+			.replace(/\/+$/, '')
+			.replace(/\.git$/, '');
+
+	/** A clock difference between here and the server, allowed for when comparing their times. */
+	const SKEW_MS = 5_000;
+
+	/**
+	 * Whether what a pending row stands for has already landed in the live list,
+	 * which can beat the add itself to finishing. A skill from that repo (and
+	 * folder, for one skill) written since the add began is the real row, so the
+	 * pending one gives way at once rather than the two showing side by side.
+	 */
+	function landed(pick: Pending) {
+		return skills.some(
+			(skill) =>
+				skill.source !== undefined &&
+				repoKeyOfUrl(skill.source.url) === pick.key &&
+				(pick.dir === null || skill.source.path === pick.dir) &&
+				skill.updatedAt >= pick.startedAt - SKEW_MS
+		);
+	}
+	// an update shows on the skill's own row instead (see SkillRow)
+	const pendingRows = $derived(imports.pending.filter((pick) => !pick.update && !landed(pick)));
 
 	/** What is ticked in the picker, by repo and directory; nothing is copied until Add. */
 	let picks = $state<Record<string, Pick>>({});
@@ -221,6 +254,22 @@
 			: `${verb} ${eligible.length} ${rest}`;
 	const globalable = $derived(selected.filter((skill) => !isGlobal(skill)));
 	const localable = $derived(selected.filter((skill) => isGlobal(skill)));
+	const publishable = $derived(selected.filter((skill) => !actions.isPublic(skill)));
+	const privatable = $derived(selected.filter((skill) => actions.isPublic(skill)));
+	const updatable = $derived(
+		selected.filter((skill) => actions.canUpdate(skill) && !imports.isUpdating(skill.name))
+	);
+
+	/** Public or private for many at once, with one toast for the lot rather than one each. */
+	async function setPublicMany(skills: Skill[], value: boolean) {
+		const results = await Promise.all(
+			skills.map((skill) => actions.setPublic(skill, value, { quiet: true }))
+		);
+		const done = results.filter(Boolean).length;
+		if (done > 0) {
+			toast.success(value ? `Anyone can now see ${count(done)}` : `${count(done)} made private`);
+		}
+	}
 
 	function download(skills: Skill[]) {
 		const query = skills.map((skill) => `name=${encodeURIComponent(skill.name)}`).join('&');
@@ -327,6 +376,14 @@
 								<RiDownload2Line />
 								Download
 							</DropdownMenu.Item>
+							<!-- disabled rather than hidden, like the rest, so the menu does not reshuffle -->
+							<DropdownMenu.Item
+								disabled={updatable.length === 0}
+								onSelect={() => actions.updateManyFromSource(updatable)}
+							>
+								<RiRefreshLine />
+								{only(updatable, 'Update', 'from source')}
+							</DropdownMenu.Item>
 						</DropdownMenu.Group>
 
 						<DropdownMenu.Separator />
@@ -351,6 +408,25 @@
 
 						<DropdownMenu.Separator />
 
+						<DropdownMenu.Group>
+							<DropdownMenu.Item
+								disabled={publishable.length === 0}
+								onSelect={() => setPublicMany(publishable, true)}
+							>
+								<RiShareLine />
+								{only(publishable, 'Make', 'public')}
+							</DropdownMenu.Item>
+							<DropdownMenu.Item
+								disabled={privatable.length === 0}
+								onSelect={() => setPublicMany(privatable, false)}
+							>
+								<RiLockLine />
+								{only(privatable, 'Make', 'private')}
+							</DropdownMenu.Item>
+						</DropdownMenu.Group>
+
+						<DropdownMenu.Separator />
+
 						<DropdownMenu.Item
 							variant="destructive"
 							onSelect={() => {
@@ -368,7 +444,7 @@
 	</div>
 {/snippet}
 
-{#if skills.length === 0 && imports.pending.length === 0}
+{#if skills.length === 0 && pendingRows.length === 0}
 	<div class="flex flex-col items-center justify-center gap-2 px-8 py-24 text-center">
 		<p class="text-sm text-card-foreground">No skills yet</p>
 		<p class="text-sm text-muted-foreground">
@@ -417,7 +493,7 @@
 		{@render pageActions()}
 	</ListToolbar>
 
-	{#if results.length === 0 && imports.pending.length === 0}
+	{#if results.length === 0 && pendingRows.length === 0}
 		<p class="px-6 py-16 text-center text-sm text-muted-foreground">
 			{#if query.trim()}
 				No {scope === 'all' ? '' : scope} skills match “{query.trim()}”.
@@ -430,7 +506,7 @@
 	<!-- nothing above the first row to clear, so it sits closer to the search -->
 	<ul class="divide-y divide-border [&>li:first-child]:pt-2">
 		<!-- on their way in from GitHub; the real rows take over as each lands -->
-		{#each imports.pending as pick (pick.id)}
+		{#each pendingRows as pick (pick.id)}
 			<!-- dressed as the row it will become, as far as is known before it lands -->
 			<ListRow
 				busy

@@ -29,7 +29,7 @@ export const actions = {
 		const data = await request.formData();
 		return await packWrite(() =>
 			locals.convex.mutation(api.packs.setPublic, {
-				uuid: String(data.get('uuid')),
+				slug: String(data.get('slug')),
 				public: data.get('public') === 'true'
 			})
 		);
@@ -38,7 +38,7 @@ export const actions = {
 	remove: async ({ locals, request }) => {
 		const data = await request.formData();
 		return await packWrite(() =>
-			locals.convex.mutation(api.packs.remove, { uuid: String(data.get('uuid')) })
+			locals.convex.mutation(api.packs.remove, { slug: String(data.get('slug')) })
 		);
 	}
 };

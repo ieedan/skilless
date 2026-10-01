@@ -85,6 +85,11 @@ catalogs:
       specifier: ^4.4.3
       version: 4.6.5
 
+patchedDependencies:
+  shadcn-svelte@1.7.0:
+    hash: 02ba67c9ae97d0ad78795a7e0d076c3c3c43c329fafd9b4a90d416793c253289
+    path: patches/shadcn-svelte@1.7.0.patch
+
 importers:
 
   .:
@@ -296,7 +301,7 @@ importers:
         version: 0.37.1(@sveltejs/kit@2.70.3(@sveltejs/vite-plugin-svelte@7.1.2(svelte@5.57.1(@typescript-eslint/types@8.70.1))(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))(svelte@5.57.1(@typescript-eslint/types@8.70.1))(typescript@5.9.3)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))(svelte@5.57.1(@typescript-eslint/types@8.70.1))(zod@4.6.5)
       shadcn-svelte:
         specifier: ^1.7.0
-        version: 1.7.0(svelte@5.57.1(@typescript-eslint/types@8.70.1))
+        version: 1.7.0(patch_hash=02ba67c9ae97d0ad78795a7e0d076c3c3c43c329fafd9b4a90d416793c253289)(svelte@5.57.1(@typescript-eslint/types@8.70.1))
       shiki:
         specifier: ^4.4.3
         version: 4.4.3
@@ -7902,7 +7907,7 @@ snapshots:
 
   setprototypeof@1.2.0: {}
 
-  shadcn-svelte@1.7.0(svelte@5.57.1(@typescript-eslint/types@8.70.1)):
+  shadcn-svelte@1.7.0(patch_hash=02ba67c9ae97d0ad78795a7e0d076c3c3c43c329fafd9b4a90d416793c253289)(svelte@5.57.1(@typescript-eslint/types@8.70.1)):
     dependencies:
       cn: 0.3.3
       commander: 14.0.3

@@ -20,7 +20,7 @@ export type PackRef = {
 
 /**
  * Where a skill was copied from by `skilless add`: a git repository, or a
- * skill served as JSON at an address like `skilless.dev/skills/<uuid>` (then
+ * skill served as JSON at an address like `skilless.dev/skills/<user>/<skill>` (then
  * `path` is empty). `hash` is the upstream contentHash as of the last add or
  * update, which is how `update` tells an untouched copy from one you have edited.
  */
@@ -44,8 +44,8 @@ export type RemoteSkill = {
 	global: boolean;
 	/** Null when it was not copied from a repo, or the server predates sources. */
 	source: SkillSource | null;
-	/** Its address is `/skills/<id>`. Absent from servers, and caches, that predate addresses. */
-	id?: string | null;
+	/** `@user/skill`, what a pack entry names it by. Only in the list, and null until the username is known. */
+	address?: string | null;
 };
 
 export type RemoteSkillWithFiles = RemoteSkill & { files: SkillFile[] };

@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 
 /**
  * Where a skill was copied from. `url` is a git repository, or a skill served
- * as JSON (`skilless.dev/skills/<uuid>`), in which case `path` is empty.
+ * as JSON (`skilless.dev/skills/<user>/<skill>`), in which case `path` is empty.
  * `pack` is the pack that last added it — what the app and CLI show as its
  * origin, and how `skilless update` finds the packs you follow.
  */
@@ -17,6 +17,25 @@ export const sourceValidator = v.object({
 });
 
 export default defineSchema({
+	/**
+	 * Who a user is in public addresses: their GitHub login, as
+	 * `skilless.dev/skills/<username>/<skill>`. Locked to GitHub, so it follows a
+	 * rename on GitHub at the next sign-in. Keyed by GitHub's numeric id, which
+	 * never changes, to look the login up again.
+	 */
+	profiles: defineTable({
+		userId: v.string(),
+		githubId: v.string(),
+		/** As GitHub writes it, for display. */
+		login: v.string(),
+		/** The login lowercased: what addresses use, and unique across users. */
+		username: v.string(),
+		/** When GitHub was last asked for the login. */
+		checkedAt: v.number()
+	})
+		.index('by_user', ['userId'])
+		.index('by_username', ['username']),
+
 	/** A skill in a user's library. Soft deleted — `deletedAt` set means it lives in the trash. */
 	skills: defineTable({
 		userId: v.string(),
@@ -43,11 +62,6 @@ export default defineSchema({
 		 * update — equal to `contentHash` until someone edits.
 		 */
 		source: v.optional(sourceValidator),
-		/**
-		 * The skill's address, `skilless.dev/skills/<uuid>`. Set on insert; absent
-		 * only on rows from before it existed, until `skills:backfillUuids` runs.
-		 */
-		uuid: v.optional(v.string()),
 		/** Anyone can read a public skill at its address. Otherwise only its owner. */
 		public: v.optional(v.boolean()),
 		deletedAt: v.optional(v.number()),
@@ -55,12 +69,11 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_user_and_name', ['userId', 'name'])
-		.index('by_user', ['userId'])
-		.index('by_uuid', ['uuid']),
+		.index('by_user', ['userId']),
 
 	/**
 	 * A list of skills from anywhere, added together with `skilless add <pack>`.
-	 * Served as JSON at `skilless.dev/packs/<uuid>` — the same shape as a pack
+	 * Served as JSON at `skilless.dev/packs/<user>/<slug>` — the same shape as a pack
 	 * file someone writes by hand.
 	 */
 	packs: defineTable({
@@ -68,7 +81,13 @@ export default defineSchema({
 		uuid: v.string(),
 		name: v.string(),
 		description: v.optional(v.string()),
-		/** Sources, as written in a pack file: git repos and `skilless.dev/skills/<uuid>`. */
+		/**
+		 * Its address, `skilless.dev/packs/<username>/<slug>`: from its name when
+		 * made, unique among the owner's packs, and kept through a rename so links
+		 * and other packs' entries keep working.
+		 */
+		slug: v.string(),
+		/** Sources, as written in a pack file: git repos and `skilless.dev/skills/<user>/<skill>`. */
 		skills: v.array(v.string()),
 		/** Anyone can read a public pack at its address. Otherwise only its owner. */
 		public: v.optional(v.boolean()),
@@ -82,6 +101,8 @@ export default defineSchema({
 		updatedAt: v.number()
 	})
 		.index('by_user', ['userId'])
+		.index('by_user_and_slug', ['userId', 'slug'])
+		/** Links between packs only: never in an address. */
 		.index('by_uuid', ['uuid']),
 
 	/**

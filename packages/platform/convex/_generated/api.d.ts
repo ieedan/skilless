@@ -20,11 +20,13 @@ import type * as model from "../model.js";
 import type * as oauth from "../oauth.js";
 import type * as packs from "../packs.js";
 import type * as preferences from "../preferences.js";
+import type * as profiles from "../profiles.js";
 import type * as projects from "../projects.js";
 import type * as r2 from "../r2.js";
 import type * as scans from "../scans.js";
 import type * as skills from "../skills.js";
 import type * as tokens from "../tokens.js";
+import type * as users from "../users.js";
 import type * as utils from "../utils.js";
 
 import type {
@@ -46,11 +48,13 @@ declare const fullApi: ApiFromModules<{
   oauth: typeof oauth;
   packs: typeof packs;
   preferences: typeof preferences;
+  profiles: typeof profiles;
   projects: typeof projects;
   r2: typeof r2;
   scans: typeof scans;
   skills: typeof skills;
   tokens: typeof tokens;
+  users: typeof users;
   utils: typeof utils;
 }>;
 

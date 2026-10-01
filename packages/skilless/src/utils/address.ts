@@ -15,9 +15,18 @@ import type { LocalSkill } from '@/utils/types';
 /*
  * Anything `skilless add` is given that is not plainly a git repository is
  * fetched first, to see what is there: a pack (any JSON with a `skills` list —
- * `skilless.dev/packs/<uuid>`, or a file on someone's own site), or one skill
- * (`skilless.dev/skills/<uuid>`). Neither, and it is cloned after all.
+ * `@user/pack/<slug>`, `skilless.dev/packs/<user>/<slug>`, or a file on
+ * someone's own site), or one skill (`@user/skill`, or
+ * `skilless.dev/skills/<user>/<skill>`). Neither, and it is cloned after all.
  */
+
+/** `@user/skill` and `@user/pack/<slug>`: skilless's own shorthand, never a GitHub repo. */
+const AT_ADDRESS = /^@([a-z\d][a-z\d-]*)\/(?:pack\/([^/\s#]+)|([^/\s#]+))$/i;
+
+/** True for the `@user/…` shorthand. */
+export function isAtAddress(arg: string): boolean {
+	return AT_ADDRESS.test(arg.trim());
+}
 
 const TIMEOUT_MS = 15_000;
 
@@ -31,6 +40,8 @@ export type Pack = z.infer<typeof packSchema>;
 
 const skillSchema = z.object({
 	name: z.string(),
+	/** The signed in user's own, as the server says; absent from servers before it said. */
+	mine: z.boolean().optional(),
 	files: z.array(
 		z.object({
 			path: z.string(),
@@ -56,11 +67,21 @@ export function addressOf(arg: string): string | null {
 	const input = arg.trim();
 	if (input.includes('#')) return null;
 
+	// `@user/skill` and `@user/pack/<slug>` live on the skilless you are signed in to
+	const at = AT_ADDRESS.exec(input);
+	if (at) {
+		const [, user, slug, skill] = at;
+		const base = getApiUrl().replace(/\/+$/, '');
+		return slug
+			? `${base}/packs/${user!.toLowerCase()}/${slug}`
+			: `${base}/skills/${user!.toLowerCase()}/${skill}`;
+	}
+
 	let url: URL;
 	try {
 		if (/^https?:\/\//i.test(input)) url = new URL(input);
 		else if (/^[^/@:\s]+(\.[^/@:\s]+|:\d+)(\/|$)/.test(input)) {
-			// a dot or a port means a host: `example.com/skills`, `localhost:5173/packs/<uuid>`.
+			// a dot or a port means a host: `example.com/skills`, `localhost:5173/packs/<user>/<slug>`.
 			// A host with a port only ever answers http locally, so it gets that
 			url = new URL(
 				`${/:\d+(\/|$)/.test(input.split('/')[0] ?? '') && !input.includes('.') ? 'http' : 'https'}://${input}`
@@ -89,17 +110,16 @@ function isOurs(url: URL): boolean {
 	return url.host === api.host || url.hostname === 'skilless.dev';
 }
 
-const PACK_PAGE =
-	/^\/(?:my-)?packs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+const PACK_PAGE = /^\/packs\/([a-z\d][a-z\d-]*)\/([^/.]+)\/?$/i;
 
 /**
- * skilless serves a pack's page at `/packs/<uuid>` (and edits it at
- * `/my-packs/<uuid>`), and its JSON beside it at `/packs/<uuid>.json`. Either
- * page is taken to mean the JSON; any other path is left as it is.
+ * skilless serves a pack's page at `/packs/<user>/<slug>`, and its JSON beside
+ * it at `/packs/<user>/<slug>.json`. The page is taken to mean the JSON; any
+ * other path is left as it is.
  */
 export function packFile(pathname: string): string {
-	const uuid = PACK_PAGE.exec(pathname)?.[1];
-	return uuid ? `/packs/${uuid.toLowerCase()}.json` : pathname;
+	const page = PACK_PAGE.exec(pathname);
+	return page ? `/packs/${page[1]!.toLowerCase()}/${page[2]!.toLowerCase()}.json` : pathname;
 }
 
 /** How an address reads in output: no scheme, no trailing slash. */
@@ -108,7 +128,8 @@ export function addressLabel(url: string): string {
 }
 
 export type Probed =
-	{ kind: 'pack'; url: string; pack: Pack } | { kind: 'skill'; url: string; skill: LocalSkill };
+	| { kind: 'pack'; url: string; pack: Pack }
+	| { kind: 'skill'; url: string; skill: LocalSkill; mine: boolean };
 
 /**
  * Fetches an address and says what is there, or null when it is neither a
@@ -177,7 +198,14 @@ export async function probe(address: string): Promise<Probed | null> {
 	if (pack.success) return { kind: 'pack', url: url.href, pack: pack.data };
 
 	const skill = skillSchema.safeParse(json);
-	if (skill.success) return { kind: 'skill', url: url.href, skill: toLocal(skill.data, label) };
+	if (skill.success) {
+		return {
+			kind: 'skill',
+			url: url.href,
+			skill: toLocal(skill.data, label),
+			mine: skill.data.mine === true
+		};
+	}
 
 	if (ours) throw new SkillessError(`${label} is not a skill or a pack.`);
 	return null;

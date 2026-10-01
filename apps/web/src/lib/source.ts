@@ -1,4 +1,4 @@
-import { shortAddress, skillUuid } from '$lib/pack';
+import { cliAddress, parseAddress, shortAddress } from '$lib/pack';
 import { projectParts, type ProjectParts } from '$lib/project';
 
 /**
@@ -9,6 +9,8 @@ export type SkillSource = {
 	url: string;
 	ref?: string;
 	path: string;
+	/** The upstream contentHash as of the last add or update. */
+	hash?: string;
 	pack?: { url: string; name?: string };
 };
 
@@ -46,8 +48,13 @@ export function originOf(source: SkillSource): Origin | null {
 		};
 	}
 
-	const uuid = skillUuid(source.url);
-	if (uuid) return { kind: 'skill', label: shortAddress(source.url), href: local(source.url) };
+	const address = parseAddress(source.url);
+	if (address?.kind === 'skill') {
+		const href = source.url.startsWith('@')
+			? `/skills/${address.username}/${address.name}`
+			: local(source.url);
+		return { kind: 'skill', label: cliAddress(address), href };
+	}
 
 	const parts = sourceParts(source);
 	return parts && { kind: 'repo', ...parts };

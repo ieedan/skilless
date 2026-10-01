@@ -244,6 +244,8 @@ export const update = new Command('update')
 					const address = addressOf(source.url);
 					if (address) {
 						const found = await spin(`Fetching ${where}`, () => probe(address));
+						// a source that is the skill itself, from before that was refused: nothing to take
+						if (found?.kind === 'skill' && found.mine) return;
 						if (found?.kind === 'skill') {
 							for (const skill of group) {
 								await consider(skill, {

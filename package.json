@@ -58,6 +58,9 @@
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild"
-		]
+		],
+		"patchedDependencies": {
+			"shadcn-svelte@1.7.0": "patches/shadcn-svelte@1.7.0.patch"
+		}
 	}
 }

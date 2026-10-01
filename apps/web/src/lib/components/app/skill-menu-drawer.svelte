@@ -13,6 +13,10 @@
 	import RiLink from 'remixicon-svelte/icons/link';
 	import RiLockLine from 'remixicon-svelte/icons/lock-line';
 	import RiShareLine from 'remixicon-svelte/icons/share-line';
+	import RiRefreshLine from 'remixicon-svelte/icons/refresh-line';
+	import { imports } from '$lib/imports.svelte';
+	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
+	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 
 	let {
 		skill,
@@ -80,27 +84,47 @@
 			<RiDownload2Line />
 			Download
 		</Drawer.Item>
+		{#if actions.canUpdate(skill)}
+			<Drawer.Item
+				disabled={imports.isUpdating(skill.name)}
+				onclick={run(() => actions.updateFromSource(skill))}
+			>
+				<RiRefreshLine />
+				Update from source
+			</Drawer.Item>
+		{/if}
 
 		<Drawer.Separator />
 
-		{#if skill.uuid}
-			<Drawer.Item onclick={run(() => actions.copyLink(skill))}>
-				<RiLink />
-				Copy link
+		<Drawer.Item onclick={run(() => actions.copyLink(skill))}>
+			<RiLink />
+			Copy link
+		</Drawer.Item>
+		{#if actions.isPublic(skill)}
+			<Drawer.Item onclick={run(() => actions.setPublic(skill, false))}>
+				<RiLockLine />
+				Make private
 			</Drawer.Item>
-			{#if actions.isPublic(skill)}
-				<Drawer.Item onclick={run(() => actions.setPublic(skill, false))}>
-					<RiLockLine />
-					Make private
-				</Drawer.Item>
-			{:else}
-				<Drawer.Item onclick={run(() => actions.setPublic(skill, true))}>
-					<RiShareLine />
-					Make public
-				</Drawer.Item>
-			{/if}
+		{:else}
+			<Drawer.Item onclick={run(() => actions.setPublic(skill, true))}>
+				<RiShareLine />
+				Make public
+			</Drawer.Item>
+		{/if}
 
-			<Drawer.Separator />
+		<Drawer.Separator />
+
+		<!-- global: in every project, bound or not; local: only the projects it is added to -->
+		{#if actions.isGlobal(skill)}
+			<Drawer.Item onclick={run(() => actions.setGlobal(skill, false))}>
+				<RiGitRepositoryLine />
+				Make local
+			</Drawer.Item>
+		{:else}
+			<Drawer.Item onclick={run(() => actions.setGlobal(skill, true))}>
+				<RiGlobalLine />
+				Make global
+			</Drawer.Item>
 		{/if}
 
 		<ProjectSubdrawer

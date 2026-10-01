@@ -41,13 +41,14 @@ const SkillSchema = z
 		global: z.boolean(),
 		/** The git repository this skill was copied from, when it was. */
 		source: SourceSchema.nullable(),
-		/** Its address is `/skills/<id>`. Null only for a skill from before addresses. */
-		id: z.string().nullable()
+		/** What a pack entry names it by, `@user/skill`. Only in the list, and null until your username is known. */
+		address: z.string().nullable().optional()
 	})
 	.openapi('Skill');
 
 const PackSchema = z
 	.object({
+		/** Its slug: unique among your packs, and the end of its address. */
 		id: z.string(),
 		name: z.string(),
 		description: z.string().nullable(),
@@ -57,8 +58,8 @@ const PackSchema = z
 		/** How many skills it brings; at least this many while `countPartial`. */
 		skillCount: z.number(),
 		countPartial: z.boolean(),
-		/** What `skilless add` takes. */
-		url: z.string()
+		/** What `skilless add` takes. Null until your username has been looked up. */
+		url: z.string().nullable()
 	})
 	.openapi('Pack');
 
@@ -117,11 +118,18 @@ app.openapi(
 		}
 	}),
 	async (c) => {
-		const skills = await c.get('convex').query(convex.skills.listFor, {
-			userId: c.get('userId')
-		});
+		const [skills, username] = await Promise.all([
+			c.get('convex').query(convex.skills.listFor, { userId: c.get('userId') }),
+			c.get('convex').query(convex.profiles.usernameFor, { userId: c.get('userId') })
+		]);
 
-		return c.json(skills.map(toSkill), 200);
+		return c.json(
+			skills.map((skill) => ({
+				...toSkill(skill),
+				address: username ? `@${username}/${skill.name}` : null
+			})),
+			200
+		);
 	}
 );
 
@@ -431,10 +439,13 @@ app.openapi(
 		}
 	}),
 	async (c) => {
-		const packs = await c.get('convex').query(convex.packs.listFor, { userId: c.get('userId') });
+		const [packs, username] = await Promise.all([
+			c.get('convex').query(convex.packs.listFor, { userId: c.get('userId') }),
+			c.get('convex').query(convex.profiles.usernameFor, { userId: c.get('userId') })
+		]);
 		const origin = new URL(c.req.url).origin;
 		return c.json(
-			packs.map((pack) => toPack(pack, origin)),
+			packs.map((pack) => toPack(pack, origin, username)),
 			200
 		);
 	}
@@ -447,7 +458,7 @@ app.openapi(
 		tags: ['packs'],
 		summary: 'Create a pack.',
 		description:
-			'Entries are what a pack file lists: `github.com/owner/repo[/path][#ref]`, or a skill address like `https://skilless.dev/skills/<id>`. New packs are private unless `public` is set.',
+			'Entries are what a pack file lists: `github.com/owner/repo[/path][#ref]`, a skilless skill `@user/skill`, or another pack `@user/pack/<slug>`. New packs are private unless `public` is set.',
 		request: {
 			body: {
 				content: {
@@ -477,16 +488,19 @@ app.openapi(
 		const body = c.req.valid('json');
 		const userId = c.get('userId');
 		try {
-			const uuid = await c.get('convex').mutation(convex.packs.createPackFor, {
+			const slug = await c.get('convex').mutation(convex.packs.createPackFor, {
 				userId,
 				name: body.name,
 				description: body.description ?? '',
 				skills: body.skills,
 				public: body.public
 			});
-			const packs = await c.get('convex').query(convex.packs.listFor, { userId });
-			const pack = packs.find((p) => p.uuid === uuid)!;
-			return c.json(toPack(pack, new URL(c.req.url).origin), 200);
+			const [packs, username] = await Promise.all([
+				c.get('convex').query(convex.packs.listFor, { userId }),
+				c.get('convex').query(convex.profiles.usernameFor, { userId })
+			]);
+			const pack = packs.find((p) => p.slug === slug)!;
+			return c.json(toPack(pack, new URL(c.req.url).origin, username), 200);
 		} catch (error) {
 			const refused = packError(error);
 			if (refused?.status === 400) return c.json(refused.body, 400);
@@ -519,7 +533,7 @@ app.openapi(
 		try {
 			await c.get('convex').mutation(convex.packs.removeFor, {
 				userId: c.get('userId'),
-				uuid: c.req.valid('param').id
+				slug: c.req.valid('param').id
 			});
 			return c.json({ ok: true }, 200);
 		} catch (error) {

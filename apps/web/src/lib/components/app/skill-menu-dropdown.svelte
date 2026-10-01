@@ -13,6 +13,10 @@
 	import RiLink from 'remixicon-svelte/icons/link';
 	import RiLockLine from 'remixicon-svelte/icons/lock-line';
 	import RiShareLine from 'remixicon-svelte/icons/share-line';
+	import RiRefreshLine from 'remixicon-svelte/icons/refresh-line';
+	import { imports } from '$lib/imports.svelte';
+	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
+	import RiGitRepositoryLine from 'remixicon-svelte/icons/git-repository-line';
 
 	let {
 		skill,
@@ -72,27 +76,47 @@
 			<RiDownload2Line />
 			Download
 		</DropdownMenu.Item>
+		{#if actions.canUpdate(skill)}
+			<DropdownMenu.Item
+				disabled={imports.isUpdating(skill.name)}
+				onSelect={() => actions.updateFromSource(skill)}
+			>
+				<RiRefreshLine />
+				Update from source
+			</DropdownMenu.Item>
+		{/if}
 
 		<DropdownMenu.Separator />
 
-		{#if skill.uuid}
-			<DropdownMenu.Item onSelect={() => actions.copyLink(skill)}>
-				<RiLink />
-				Copy link
+		<DropdownMenu.Item onSelect={() => actions.copyLink(skill)}>
+			<RiLink />
+			Copy link
+		</DropdownMenu.Item>
+		{#if actions.isPublic(skill)}
+			<DropdownMenu.Item onSelect={() => actions.setPublic(skill, false)}>
+				<RiLockLine />
+				Make private
 			</DropdownMenu.Item>
-			{#if actions.isPublic(skill)}
-				<DropdownMenu.Item onSelect={() => actions.setPublic(skill, false)}>
-					<RiLockLine />
-					Make private
-				</DropdownMenu.Item>
-			{:else}
-				<DropdownMenu.Item onSelect={() => actions.setPublic(skill, true)}>
-					<RiShareLine />
-					Make public
-				</DropdownMenu.Item>
-			{/if}
+		{:else}
+			<DropdownMenu.Item onSelect={() => actions.setPublic(skill, true)}>
+				<RiShareLine />
+				Make public
+			</DropdownMenu.Item>
+		{/if}
 
-			<DropdownMenu.Separator />
+		<DropdownMenu.Separator />
+
+		<!-- global: in every project, bound or not; local: only the projects it is added to -->
+		{#if actions.isGlobal(skill)}
+			<DropdownMenu.Item onSelect={() => actions.setGlobal(skill, false)}>
+				<RiGitRepositoryLine />
+				Make local
+			</DropdownMenu.Item>
+		{:else}
+			<DropdownMenu.Item onSelect={() => actions.setGlobal(skill, true)}>
+				<RiGlobalLine />
+				Make global
+			</DropdownMenu.Item>
 		{/if}
 
 		<ProjectSubmenu

@@ -4,7 +4,7 @@ import { supportsBinary, updateMessage, withBinary } from '$lib/server/clients';
 
 /** The skill as JSON, for `skilless add`. A browser asking for HTML gets `+page.svelte` instead. */
 export async function GET(event) {
-	const view = await viewSkill(event, event.params.id);
+	const view = await viewSkill(event, event.params.user, event.params.name);
 	if (!view) return json(NOT_FOUND, { status: 404, headers: cacheHeaders(false) });
 
 	// an older CLI would write a binary file out as base64 text, so it is told to update

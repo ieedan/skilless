@@ -25,12 +25,14 @@ Leave out the skill names to pick from everything in the repository. The skills 
 
 ## From a skill or pack on skilless
 
-A skill's link, or a [pack](/docs/packs), works the same way:
+A skill or a [pack](/docs/packs) on skilless is added by its owner's username:
 
 ```bash
-skilless add skilless.dev/skills/<id>
-skilless add skilless.dev/packs/<id>
+skilless add @ieedan/grill-me
+skilless add @ieedan/pack/svelte-essentials
 ```
+
+Its full link works too: `skilless.dev/skills/ieedan/grill-me`, or `skilless.dev/packs/ieedan/svelte-essentials`.
 
 A pack adds every skill it lists, and `skilless update` brings in any it gains later.
 

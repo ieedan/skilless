@@ -76,11 +76,10 @@ export const setPublic = mutation({
 
 /** A skill at its address, for its page. Public, or the signed in viewer's own. */
 export const view = query({
-	args: { uuid: v.string() },
+	args: { username: v.string(), name: v.string() },
 	handler: async (ctx, args) => {
-		if (!model.isUuid(args.uuid)) return null;
 		const user = await ctx.auth.getUserIdentity();
-		return await model.viewSkill(ctx, args.uuid, user?.subject ?? null);
+		return await model.viewSkill(ctx, args.username, args.name, user?.subject ?? null);
 	}
 });
 
@@ -121,10 +120,9 @@ export const setSourceFor = secretMutation({
 
 /** A skill at its address, for its JSON. `viewerId` is whoever the bearer token belongs to, if anyone. */
 export const viewFor = secretQuery({
-	args: { uuid: v.string(), viewerId: v.union(v.string(), v.null()) },
+	args: { username: v.string(), name: v.string(), viewerId: v.union(v.string(), v.null()) },
 	handler: async (ctx, args) => {
-		if (!model.isUuid(args.uuid)) return null;
-		return await model.viewSkill(ctx, args.uuid, args.viewerId);
+		return await model.viewSkill(ctx, args.username, args.name, args.viewerId);
 	}
 });
 
@@ -212,20 +210,46 @@ export const commit = internalMutation({
 	}
 });
 
+/** A skill to copy into someone's library, if they may see it: its name, and its file rows. */
+export const forCopy = internalQuery({
+	args: { username: v.string(), name: v.string(), viewerId: v.string() },
+	handler: async (ctx, args) => {
+		const skill = await model.findSkillAt(ctx, args.username, args.name);
+		if (!skill || !model.canView(skill, args.viewerId)) return null;
+		return {
+			name: skill.name,
+			mine: skill.userId === args.viewerId,
+			files: await model.fileRows(ctx, skill._id)
+		};
+	}
+});
+
+/** Whether the signed in viewer already has a copy of this skill in their library. */
+export const added = query({
+	args: { username: v.string(), name: v.string() },
+	handler: async (ctx, args) => {
+		const user = await ctx.auth.getUserIdentity();
+		if (!user) return false;
+		return await model.hasCopyOf(ctx, user.subject, args.username, args.name);
+	}
+});
+
 /**
- * Gives every skill from before addresses existed one. Idempotent, so safe to
- * run again: `npx convex run skills:backfillUuids`.
+ * Forgets sources that point a skill at itself, from before copying your own
+ * skill was refused. Safe to run again: `npx convex run skills:dropSelfSources`.
  */
-export const backfillUuids = internalMutation({
+export const dropSelfSources = internalMutation({
 	args: {},
-	handler: async (ctx): Promise<{ updated: number }> => {
-		let updated = 0;
+	handler: async (ctx): Promise<{ dropped: number }> => {
+		let dropped = 0;
 		for (const skill of await ctx.db.query('skills').collect()) {
-			if (skill.uuid) continue;
-			await ctx.db.patch(skill._id, { uuid: crypto.randomUUID() });
-			updated++;
+			const address = skill.source ? model.parseAddress(skill.source.url) : null;
+			if (address?.kind !== 'skill' || address.name !== skill.name) continue;
+			if ((await model.usernameOf(ctx, skill.userId)) !== address.username) continue;
+			await ctx.db.patch(skill._id, { source: undefined });
+			dropped++;
 		}
-		return { updated };
+		return { dropped };
 	}
 });
 

@@ -1,17 +1,24 @@
+import { page } from '$app/state';
 import { toast } from 'svelte-sonner';
 import { confirmDelete } from '$lib/components/ui/confirm-delete-dialog';
 import { copyText } from '$lib/hooks/use-clipboard.svelte';
 import { submitAction } from '$lib/submit';
+import { useConvexClient } from '@skilless/platform/client';
+import { imports, updatableSource } from '$lib/imports.svelte';
+import type { SkillSource } from '$lib/source';
 
 export type MenuSkill = {
 	_id: string;
 	name: string;
 	soleFile?: string;
 	global?: boolean;
-	/** The skill's address, `/skills/<uuid>`. Absent only on rows from before addresses. */
-	uuid?: string;
 	public?: boolean;
 	projectIds: string[];
+	/** Where it was copied from, for updating from there. */
+	source?: SkillSource | null;
+	contentHash?: string;
+	/** For a copy of a skill on skilless, the original's hash now (null once it is gone). */
+	upstreamHash?: string | null;
 };
 
 export type MenuProject = {
@@ -54,22 +61,25 @@ export class Optimistic {
 		return value;
 	}
 
-	async run(key: string, value: boolean, request: () => Promise<boolean>) {
+	/** Whether the request went through. */
+	async run(key: string, value: boolean, request: () => Promise<boolean>): Promise<boolean> {
 		const id = (this.#requests[key] ?? 0) + 1;
 		this.#requests[key] = id;
 		this.#settled.delete(key);
 		this.#values[key] = value;
 
 		const ok = await request().catch(() => false);
-		if (this.#requests[key] !== id) return;
+		// a newer change took over: this one's outcome still stands for whoever asked
+		if (this.#requests[key] !== id) return ok;
 
 		if (!ok) {
 			this.#clear(key, id);
-			return;
+			return false;
 		}
 
 		this.#settled.add(key);
 		setTimeout(() => this.#clear(key, id), CATCH_UP_MS);
+		return true;
 	}
 
 	#clear(key: string, id: number | undefined) {
@@ -98,6 +108,66 @@ export class SkillActions {
 
 	/** Every page using this is fed by live `convexLoad` queries, so there is nothing to invalidate. */
 	#options = { keepFocus: true, invalidate: false };
+
+	/** Made with the page, so this is too: see where each `SkillActions` is created. */
+	#client = useConvexClient();
+
+	/**
+	 * Whether there is anything to fetch from its source. A skill on skilless is
+	 * known live, so a copy that matches its original has nothing to take; a
+	 * repo would need fetching to know, so one is always offered.
+	 */
+	canUpdate(skill: MenuSkill) {
+		const from = updatableSource(skill.source);
+		if (!from) return false;
+		if (from.kind === 'skilless' && skill.upstreamHash !== undefined) {
+			return skill.upstreamHash !== null && skill.upstreamHash !== skill.contentHash;
+		}
+		return true;
+	}
+
+	/** Changed since it was added or last updated, so updating would replace those changes. */
+	isEdited(skill: MenuSkill) {
+		return (
+			skill.contentHash !== undefined &&
+			skill.source?.hash !== undefined &&
+			skill.contentHash !== skill.source.hash
+		);
+	}
+
+	/** As `updateFromSource`, for many at once: one question for every edited one among them. */
+	updateManyFromSource(skills: MenuSkill[]) {
+		const edited = skills.filter((skill) => this.isEdited(skill));
+		const which =
+			edited.length === 1
+				? edited[0]!.name
+				: `${edited.length} ${edited.length === 1 ? 'skill' : 'skills'}`;
+		confirmDelete({
+			title: `Replace your changes to ${which}?`,
+			description:
+				'You have changed them since they were added. Updating takes each as it is at its source now, and your changes are gone.',
+			confirm: { text: `Update ${skills.length}` },
+			skipConfirmation: edited.length === 0,
+			onConfirm: async () => {
+				for (const skill of skills) void imports.updateFromSource(this.#client, skill);
+			}
+		});
+	}
+
+	/** Fetches it from its source again. Asks first when that would replace changes of yours. */
+	updateFromSource(skill: MenuSkill) {
+		confirmDelete({
+			title: `Replace your changes to ${skill.name}?`,
+			description:
+				'You have changed it since it was added. Updating takes it as it is at its source now, and your changes are gone.',
+			confirm: { text: 'Update' },
+			skipConfirmation: !this.isEdited(skill),
+			onConfirm: async () => {
+				// not awaited: the row shows it loading, and the dialog need not wait on GitHub
+				void imports.updateFromSource(this.#client, skill);
+			}
+		});
+	}
 
 	isBound(skill: MenuSkill, project: MenuProject) {
 		return this.#bindings.read(
@@ -144,7 +214,8 @@ export class SkillActions {
 		return this.#publics.read(skill._id, skill.public === true);
 	}
 
-	setPublic(skill: MenuSkill, value: boolean) {
+	/** `quiet` leaves the success toast to the caller, for a change to many at once. */
+	setPublic(skill: MenuSkill, value: boolean, { quiet = false } = {}) {
 		return this.#publics.run(skill._id, value, async () => {
 			const result = await submitAction(
 				'/my-skills?/setPublic',
@@ -152,7 +223,9 @@ export class SkillActions {
 				this.#options
 			).catch(() => null);
 			if (result?.type === 'success') {
-				toast.success(value ? `Anyone can now see ${skill.name}` : `${skill.name} is private`);
+				if (!quiet) {
+					toast.success(value ? `Anyone can now see ${skill.name}` : `${skill.name} is private`);
+				}
 				return true;
 			}
 			toast.error(`Could not update ${skill.name}`);
@@ -162,8 +235,12 @@ export class SkillActions {
 
 	/** Its address, which works for anyone once it is public and only for you until then. */
 	async copyLink(skill: MenuSkill) {
-		if (!skill.uuid) return;
-		const link = `${location.origin}/skills/${skill.uuid}`;
+		const username = page.data.username as string | null | undefined;
+		if (!username) {
+			toast.error('Your username is not known yet. Try again in a moment.');
+			return;
+		}
+		const link = `${location.origin}/skills/${username}/${skill.name}`;
 		if ((await copyText(link)) === 'success') {
 			toast.success(this.isPublic(skill) ? 'Copied link' : 'Copied link, only you can open it');
 		} else {

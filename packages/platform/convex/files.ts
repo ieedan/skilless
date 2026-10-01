@@ -104,7 +104,7 @@ function validate(files: SkillFile[]) {
 	if (bytes > MAX_SKILL_BYTES) throw createConvexError(convexError.SkillTooLarge());
 }
 
-async function readContents(rows: Doc<'skillFiles'>[]): Promise<SkillFile[]> {
+export async function readContents(rows: Doc<'skillFiles'>[]): Promise<SkillFile[]> {
 	return await Promise.all(
 		toLinks(rows).map(async (link) => {
 			const response = await fetch(link.url);

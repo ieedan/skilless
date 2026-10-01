@@ -3,7 +3,8 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { discoverDirs, skillName } from './discover';
-import { hashFiles, MAX_SKILL_BYTES, writeSkill } from './files';
+import { env } from '../env.convex';
+import { hashFiles, MAX_SKILL_BYTES, readContents, writeSkill } from './files';
 import { githubToken } from './github';
 import { isGithubKey, parseFrontmatter, type SkillFile } from './model';
 import { readBytes, readFiles, readTree, type RepoTree, skillDirs } from './scans';
@@ -215,5 +216,59 @@ export const fromGithub = action({
 		}
 
 		return result;
+	}
+});
+
+/** How copying one skilless skill went. */
+export type CopyResult =
+	| { status: 'added' | 'unchanged'; name: string }
+	/** You have a different skill by that name; copy again with `replace` to swap it in. */
+	| { status: 'conflict'; name: string }
+	| { status: 'missing' }
+	/** It is yours already: a skill cannot be copied from itself. */
+	| { status: 'own'; name: string };
+
+/**
+ * Copies a skill on skilless — public, or your own — into your library, as
+ * `skilless add @user/skill` does. It remembers its address, so `skilless
+ * update` keeps it in step with the original.
+ */
+export const fromSkilless = action({
+	args: { username: v.string(), name: v.string(), replace: v.optional(v.boolean()) },
+	handler: async (ctx, args): Promise<CopyResult> => {
+		const userId = await requireUser(ctx);
+		const found = await ctx.runQuery(internal.skills.forCopy, {
+			username: args.username,
+			name: args.name,
+			viewerId: userId
+		});
+		if (!found) return { status: 'missing' };
+		// your own skill is in your library already; copying it would make it its own source
+		if (found.mine) return { status: 'own', name: found.name };
+
+		const files = await readContents(found.files);
+		const contentHash = hashFiles(files);
+		const source = {
+			url: `${env.SITE_URL.replace(/\/+$/, '')}/skills/${args.username.toLowerCase()}/${found.name}`,
+			path: '',
+			hash: contentHash
+		};
+
+		const mine = await ctx.runQuery(internal.skills.snapshot, { userId, name: found.name });
+		if (mine && mine.skill.contentHash !== contentHash && !args.replace) {
+			return { status: 'conflict', name: found.name };
+		}
+
+		const unchanged = mine?.skill.contentHash === contentHash;
+		if (!unchanged) {
+			await writeSkill(ctx, {
+				userId,
+				name: found.name,
+				editedAt: Date.now(),
+				change: () => files
+			});
+		}
+		await ctx.runMutation(internal.skills.setSource, { userId, name: found.name, source });
+		return { status: unchanged ? 'unchanged' : 'added', name: found.name };
 	}
 });

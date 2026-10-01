@@ -10,10 +10,15 @@ export async function load({ locals, url, depends }) {
 	// the account menu reloads just this after changing a preference
 	depends('app:preferences');
 
-	const [user, preferences] = await Promise.all([
+	const [user, preferences, profile] = await Promise.all([
 		locals.convex.query(api.auth.getCurrentUser, {}),
-		locals.convex.query(api.preferences.get, {})
+		locals.convex.query(api.preferences.get, {}),
+		locals.convex.query(api.profiles.me, {})
 	]);
 
-	return { user: toAppUser(user, preferences), preferences };
+	// signed in before usernames existed: look the GitHub login up once, now
+	const username =
+		profile?.username ?? (await locals.convex.action(api.profiles.ensure, {}).catch(() => null));
+
+	return { user: toAppUser(user, preferences), preferences, username };
 }

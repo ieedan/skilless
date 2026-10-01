@@ -1,7 +1,8 @@
 import { SvelteSet } from 'svelte/reactivity';
 
 export type EntrySkill = {
-	uuid: string;
+	/** Its owner's, for its address. */
+	username: string;
 	name: string;
 	title?: string;
 	description?: string;
@@ -17,14 +18,16 @@ export type EntryRepo = {
 
 /** Another pack, included in this one. */
 export type EntryPack = {
-	uuid: string;
+	/** Its owner's username and its slug, for its address. */
+	username: string;
+	slug: string;
 	name: string;
 	description?: string;
 	skillCount: number;
 	countPartial: boolean;
 	public: boolean;
 	mine: boolean;
-	owner: { name: string; image: string | null };
+	owner: { name: string; image: string | null; username: string | null };
 };
 
 /** A pack entry as the pages show it: as written, with whatever it was resolved to. */

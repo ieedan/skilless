@@ -128,7 +128,12 @@
 		{#if skill?.source || (menuSkill && actions.isPublic(menuSkill)) || badges.modelInvocable || badges.version || badges.license || tools > 0}
 			<div class="flex flex-wrap items-center gap-1.5">
 				{#if skill?.source}
-					<SkillOrigin source={skill.source} soleFile={skill.soleFile} badge />
+					<SkillOrigin
+						source={skill.source}
+						soleFile={skill.soleFile}
+						contentHash={skill.contentHash}
+						badge
+					/>
 				{/if}
 				{#if menuSkill && actions.isPublic(menuSkill)}
 					{@render badge('Public', 'Anyone with the link can see and add it', RiShareLine)}

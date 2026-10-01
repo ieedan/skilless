@@ -30,8 +30,8 @@ const skillSchema = z.object({
 	global: z.boolean(),
 	// absent from servers that predate sources
 	source: sourceSchema.nullable().default(null),
-	// its address is `/skills/<id>`; absent from servers that predate addresses
-	id: z.string().nullable().default(null)
+	// `@user/skill`, what a pack entry names it by; only in the list, and null until the username is known
+	address: z.string().nullable().default(null)
 });
 
 const packSchema = z.object({

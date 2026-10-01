@@ -16,8 +16,8 @@ import type { LocalSkill, PackRef, SkillSource } from '@/utils/types';
  *     "skills": [
  *       "github.com/anthropics/skills",                    every skill in the repo
  *       "github.com/sveltejs/ai-tools/skills#main",        every skill in a folder, pinned
- *       "https://skilless.dev/skills/<uuid>",              one skill on skilless
- *       "https://skilless.dev/packs/<uuid>"                every skill in another pack
+ *       "@ieedan/grill-me",                                one skill on skilless
+ *       "@ieedan/pack/svelte-essentials"                   every skill in another pack
  *     ]
  *   }
  *
@@ -193,6 +193,8 @@ export async function resolvePack(
 						]);
 						continue;
 					}
+					// your own skill is in your library already, and cannot be its own source
+					if (probed?.kind === 'skill' && probed.mine) continue;
 					if (probed?.kind === 'skill') {
 						take(
 							{

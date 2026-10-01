@@ -4,6 +4,7 @@
 	import RiGlobalLine from 'remixicon-svelte/icons/global-line';
 	import RiShareLine from 'remixicon-svelte/icons/share-line';
 	import SkillOrigin from './skill-origin.svelte';
+	import { imports } from '$lib/imports.svelte';
 	import ListRow from './list-row.svelte';
 	import SkillMenu from './skill-menu.svelte';
 
@@ -15,7 +16,7 @@
 		selected,
 		onSelectedChange
 	}: {
-		skill: MenuSkill & { description?: string; source?: SkillSource };
+		skill: MenuSkill & { description?: string; source?: SkillSource; contentHash?: string };
 		projects: MenuProject[];
 		actions: SkillActions;
 		/** Search terms to highlight, from the list's filter. */
@@ -45,6 +46,7 @@
 	{terms}
 	description={skill.description}
 	{selected}
+	busy={imports.isUpdating(skill.name)}
 	{onSelectedChange}
 >
 	{#snippet meta()}
@@ -60,7 +62,11 @@
 			</span>
 		{/if}
 		{#if skill.source}
-			<SkillOrigin source={skill.source} soleFile={skill.soleFile} />
+			<SkillOrigin
+				source={skill.source}
+				soleFile={skill.soleFile}
+				contentHash={skill.contentHash}
+			/>
 		{/if}
 		{#if skillActions.isPublic(skill)}
 			<span class="inline-flex shrink-0" title="Public: anyone with the link can see it">

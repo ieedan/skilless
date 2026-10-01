@@ -5,7 +5,9 @@
 	import type { AppUser } from '$lib/user';
 	import Avatar from './avatar.svelte';
 	import { AccountActions, THEMES, type Theme } from './account-actions.svelte';
+	import { page } from '$app/state';
 	import RiLogoutBoxRLine from 'remixicon-svelte/icons/logout-box-r-line';
+	import RiUserLine from 'remixicon-svelte/icons/user-line';
 
 	let { user, hideEmail }: { user: AppUser; hideEmail: boolean } = $props();
 
@@ -32,6 +34,20 @@
 		</div>
 
 		<DropdownMenu.Separator />
+
+		<!-- your public page: what everyone sees of your skills and packs -->
+		{#if page.data.username}
+			<DropdownMenu.Item>
+				{#snippet child({ props })}
+					<a {...props} href="/skills/{page.data.username}">
+						<RiUserLine />
+						Profile
+					</a>
+				{/snippet}
+			</DropdownMenu.Item>
+
+			<DropdownMenu.Separator />
+		{/if}
 
 		<!--
 			The three options are still menu items, so arrow keys reach them like

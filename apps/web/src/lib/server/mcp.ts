@@ -24,7 +24,7 @@ A skill is a folder of text files with a SKILL.md at its root. SKILL.md starts w
 
 A project is identified by its normalized git remote, e.g. \`github.com/owner/repo\`. A project gets every skill bound to it plus every global skill.
 
-A pack is a list of skills from anywhere, added together with \`skilless add <pack url>\`. Its entries are \`github.com/owner/repo[/path][#ref]\` (a repo or folder brings every skill in it, including ones added later) or a skill address \`<origin>/skills/<id>\` — a library skill's id comes from list_skills.
+A pack is a list of skills from anywhere, added together with \`skilless add <pack url>\`. Its entries are \`github.com/owner/repo[/path][#ref]\` (a repo or folder brings every skill in it, including ones added later) a skilless skill \`@user/skill\`, or another pack \`@user/pack/<slug>\`. A library skill's address comes from list_skills.
 
 Prefer write_skill_file for small edits to an existing skill; save_skill replaces the whole file set.`;
 
@@ -34,11 +34,11 @@ const projectKey = z
 	.min(1)
 	.describe('The project key: its normalized git remote, e.g. `github.com/owner/repo`.');
 const path = z.string().min(1).describe('A file path relative to the skill root, e.g. `SKILL.md`.');
-const packId = z.string().min(1).describe('The pack id, from list_packs.');
+const packId = z.string().min(1).describe("The pack's id (its slug), from list_packs.");
 const entries = z
 	.array(z.string().min(1))
 	.describe(
-		'Pack entries: `github.com/owner/repo[/path][#ref]`, or a skill address `<origin>/skills/<id>`.'
+		'Pack entries: `github.com/owner/repo[/path][#ref]`, a skilless skill `@user/skill`, or a pack `@user/pack/<slug>`.'
 	);
 
 function json(value: unknown): CallToolResult {
@@ -78,6 +78,10 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 		{ instructions: INSTRUCTIONS }
 	);
 
+	/** The user's username, once: every pack address needs it. */
+	let username: Promise<string | null> | undefined;
+	const usernameOf = () => (username ??= client.query(convex.profiles.usernameFor, { userId }));
+
 	async function readSkill(skillName: string) {
 		const [found] = await client.query(convex.links.readFor, { userId, names: [skillName] });
 		if (!found) return null;
@@ -102,13 +106,18 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 			annotations: { readOnlyHint: true }
 		},
 		guard(async () => {
-			const skills = await client.query(convex.skills.listFor, { userId });
+			const [skills, username] = await Promise.all([
+				client.query(convex.skills.listFor, { userId }),
+				usernameOf()
+			]);
 
 			return json(
 				skills.map((skill) => ({
 					...toSkill(skill),
 					title: skill.title ?? null,
-					description: skill.description ?? null
+					description: skill.description ?? null,
+					/** What a pack entry names it by. */
+					address: username ? `@${username}/${skill.name}` : null
 				}))
 			);
 		})
@@ -341,10 +350,10 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 	/* ---------------------------------------------------------------- packs */
 
 	const packWithEntries = async (id: string) => {
-		const view = await client.query(convex.packs.getFor, { userId, uuid: id });
+		const view = await client.query(convex.packs.getFor, { userId, slug: id });
 		if (!view) return null;
 		return {
-			...toPack(view.pack, origin),
+			...toPack(view.pack, origin, await usernameOf()),
 			entries: view.entries.map(({ entry, skill, repo }) => ({
 				entry,
 				skill: skill && {
@@ -370,7 +379,8 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 		},
 		guard(async () => {
 			const packs = await client.query(convex.packs.listFor, { userId });
-			return json(packs.map((pack) => toPack(pack, origin)));
+			const name = await usernameOf();
+			return json(packs.map((pack) => toPack(pack, origin, name)));
 		})
 	);
 
@@ -431,21 +441,21 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 			if (args.add?.length) {
 				await client.mutation(convex.packs.addEntriesFor, {
 					userId,
-					uuid: args.id,
+					slug: args.id,
 					entries: args.add
 				});
 			}
 			if (args.remove?.length) {
 				await client.mutation(convex.packs.removeEntriesFor, {
 					userId,
-					uuid: args.id,
+					slug: args.id,
 					entries: args.remove
 				});
 			}
 			if (args.public !== undefined) {
 				await client.mutation(convex.packs.setPublicFor, {
 					userId,
-					uuid: args.id,
+					slug: args.id,
 					public: args.public
 				});
 			}
@@ -463,7 +473,7 @@ function createServer({ userId, convex: client }: Authenticated, origin: string)
 			annotations: { destructiveHint: true }
 		},
 		guard(async (args) => {
-			await client.mutation(convex.packs.removeFor, { userId, uuid: args.id });
+			await client.mutation(convex.packs.removeFor, { userId, slug: args.id });
 			return json({ deleted: args.id });
 		})
 	);

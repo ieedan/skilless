@@ -1,10 +1,11 @@
 import { fetchFiles } from '@skilless/platform/client';
+import { api } from '@skilless/platform';
 import { error } from '@sveltejs/kit';
 import { viewSkill } from '$lib/server/addresses';
-import { shortAddress, skillAddress } from '$lib/pack';
+import { cliAddress } from '$lib/pack';
 
 export async function load(event) {
-	const view = await viewSkill(event, event.params.id);
+	const view = await viewSkill(event, event.params.user, event.params.name);
 	if (!view) error(404, 'Nothing is at that address, or it is private.');
 
 	// skills are capped at 3MB, so every text file comes down with the page; a
@@ -19,9 +20,18 @@ export async function load(event) {
 		a.path === 'SKILL.md' ? -1 : b.path === 'SKILL.md' ? 1 : a.path.localeCompare(b.path)
 	);
 
+	// whether the button says Add or Added; only asked of someone signed in looking at another's skill
+	const added =
+		event.locals.token && !view.mine
+			? await event.locals.convex.query(api.skills.added, {
+					username: event.params.user,
+					name: view.skill.name
+				})
+			: false;
+
 	return {
+		added,
 		skill: {
-			uuid: view.skill.uuid!,
 			name: view.skill.name,
 			title: view.skill.title,
 			description: view.skill.description,
@@ -31,6 +41,11 @@ export async function load(event) {
 		owner: view.owner,
 		mine: view.mine,
 		files,
-		address: shortAddress(skillAddress(event.url.origin, view.skill.uuid!))
+		// what to type after `skilless add`
+		address: cliAddress({
+			kind: 'skill',
+			username: event.params.user.toLowerCase(),
+			name: view.skill.name
+		})
 	};
 }

@@ -434,6 +434,14 @@ async function addFrom(
 
 		if (found?.kind === 'skill') {
 			whole('A skill address');
+			if (found.mine) {
+				throw new SkillessError(
+					`${found.skill.name} is your own skill, so it is in your library already.`,
+					{
+						suggestion: `Run \`skilless add ${found.skill.name}\` to add it to this project.`
+					}
+				);
+			}
 			if (options.notGlobal) {
 				throw new SkillessError('--not-global only applies to skills already in your library.');
 			}

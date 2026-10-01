@@ -62,7 +62,7 @@
 			];
 		}
 
-		// A pack's address is a UUID, so it reads by the name its page loaded.
+		// A pack's address is its slug, so it reads by the name its page loaded.
 		if (section === 'my-packs' && rest.length > 0) {
 			const view = (page.data as { view?: { data?: { pack: { name: string } } | null } }).view;
 			return [

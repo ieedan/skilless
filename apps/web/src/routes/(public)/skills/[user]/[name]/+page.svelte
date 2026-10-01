@@ -4,6 +4,8 @@
 	import BinaryFile from '$lib/components/app/binary-file.svelte';
 	import CodeEditor from '$lib/components/app/code-editor.svelte';
 	import FileIcon from '$lib/components/app/file-icon.svelte';
+	import { page } from '$app/state';
+	import AddSkillButton from '$lib/components/app/add-skill-button.svelte';
 	import Owner from '$lib/components/app/owner.svelte';
 	import Snippet from '$lib/components/app/snippet.svelte';
 	import { badgeVariants } from '$lib/components/ui/badge';
@@ -24,19 +26,28 @@
 </svelte:head>
 
 <header class="flex flex-col gap-4 pt-10 pb-6">
-	<div class="flex flex-col gap-2">
-		<h1 class="font-mono text-2xl font-semibold text-foreground">
-			{data.skill.title ?? data.skill.name}
-		</h1>
-		{#if data.skill.description}
-			<p class="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">
-				{data.skill.description}
-			</p>
+	<div class="flex items-start justify-between gap-4">
+		<div class="flex min-w-0 flex-col gap-2">
+			<h1 class="font-mono text-2xl font-semibold text-foreground">
+				{data.skill.title ?? data.skill.name}
+			</h1>
+			{#if data.skill.description}
+				<p class="text-sm leading-relaxed whitespace-pre-line text-muted-foreground">
+					{data.skill.description}
+				</p>
+			{/if}
+		</div>
+		<!-- signed in, and someone else's: straight into your library -->
+		{#if page.data.signedIn && !data.mine && data.owner.username}
+			<AddSkillButton username={data.owner.username} name={data.skill.name} added={data.added} />
 		{/if}
 	</div>
 
 	<div class="flex flex-wrap items-center gap-3">
-		<Owner owner={data.owner} />
+		<Owner
+			owner={data.owner}
+			href={data.owner.username ? `/skills/${data.owner.username}` : undefined}
+		/>
 		{#if !data.skill.public}
 			<!-- only its owner ever sees a private one -->
 			<span class={badgeVariants({ variant: 'outline' })}>

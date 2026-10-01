@@ -1,10 +1,9 @@
 /*
  * Pack entries, as written in a pack file: `github.com/owner/repo/path#ref`,
- * a GitHub or GitLab URL, or a skilless address `https://skilless.dev/skills/<uuid>`.
+ * a GitHub or GitLab URL, or a skilless address: `https://skilless.dev/skills/<user>/<skill>`,
+ * `https://skilless.dev/packs/<user>/<slug>`, or the CLI's `@user/skill` and `@user/pack/<slug>`.
  * The CLI is what resolves them; this only reads them well enough to show.
  */
-
-const UUID = /\/skills\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
 export type EntryParts = {
 	host: 'github' | 'gitlab' | 'skilless' | 'other';
@@ -15,30 +14,67 @@ export type EntryParts = {
 	href?: string;
 };
 
-/** The skill a skilless address names. */
-export function skillUuid(entry: string): string | null {
-	return UUID.exec(entry.trim())?.[1]?.toLowerCase() ?? null;
+/** Something on skilless, as an address names it. */
+export type Address =
+	| { kind: 'skill'; username: string; name: string }
+	| { kind: 'pack'; username: string; slug: string };
+
+/**
+ * Reads a skilless address however it is written, as the platform's
+ * `parseAddress` does: `@user/skill`, `@user/pack/<slug>`, or a page or its JSON
+ * on any host. Null for anything else, a repository included.
+ */
+export function parseAddress(entry: string): Address | null {
+	const raw = entry.trim().split('#')[0]!.replace(/\/+$/, '');
+
+	const at = /^@([a-z\d][a-z\d-]*)\/(?:pack\/([^/\s]+)|([^/\s]+))$/i.exec(raw);
+	if (at) {
+		const username = at[1]!.toLowerCase();
+		return at[2]
+			? { kind: 'pack', username, slug: at[2].toLowerCase() }
+			: { kind: 'skill', username, name: at[3]!.toLowerCase() };
+	}
+
+	const url =
+		/^(?:https?:\/\/)?([^/\s]+)\/(skills|packs)\/([a-z\d][a-z\d-]*)\/([^/\s]+?)(?:\.json)?$/i.exec(
+			raw
+		);
+	if (!url) return null;
+	const host = url[1]!.toLowerCase();
+	if (!/[.:]/.test(host) || host === 'github.com' || host === 'www.github.com') return null;
+
+	const username = url[3]!.toLowerCase();
+	const tail = url[4]!.toLowerCase();
+	return url[2]!.toLowerCase() === 'skills'
+		? { kind: 'skill', username, name: tail }
+		: { kind: 'pack', username, slug: tail };
 }
 
-const PACK_UUID =
-	/\/(?:my-)?packs\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.json)?\/?$/i;
-
-/** The pack a skilless pack address names: its page, its JSON, or the page that edits it. */
-export function packUuid(entry: string): string | null {
-	return PACK_UUID.exec(entry.trim().split('#')[0]!)?.[1]?.toLowerCase() ?? null;
+/** Whether two entries name the same skill or pack on skilless, however each was written. */
+export function sameAddress(a: string, b: string): boolean {
+	const x = parseAddress(a);
+	const y = parseAddress(b);
+	if (!x || !y || x.kind !== y.kind || x.username !== y.username) return false;
+	return x.kind === 'skill'
+		? x.name === (y as typeof x).name
+		: x.slug === (y as Extract<Address, { kind: 'pack' }>).slug;
 }
 
 /** How a skill's address reads in a pack: the full URL, so it works pasted anywhere. */
-export function skillAddress(origin: string, uuid: string): string {
-	return `${origin}/skills/${uuid}`;
+export function skillAddress(origin: string, username: string, name: string): string {
+	return `${origin}/skills/${username}/${name}`;
 }
 
-/**
- * The address shown for `skilless add`: the pack's page. The CLI reads the
- * JSON beside it at `.json`, so the page's URL is all anyone needs to copy.
- */
-export function packAddress(origin: string, uuid: string): string {
-	return `${origin}/packs/${uuid}`;
+/** A pack's page. The CLI reads the JSON beside it at `.json`, so the page's URL is all anyone needs. */
+export function packAddress(origin: string, username: string, slug: string): string {
+	return `${origin}/packs/${username}/${slug}`;
+}
+
+/** What to type after `skilless add`: `@user/skill`, or `@user/pack/<slug>`. */
+export function cliAddress(address: Address): string {
+	return address.kind === 'skill'
+		? `@${address.username}/${address.name}`
+		: `@${address.username}/pack/${address.slug}`;
 }
 
 /** An address as typed after `skilless add`: no `https://`, which the CLI assumes. */
@@ -56,11 +92,17 @@ export function entryParts(entry: string): EntryParts {
 		rest = rest.slice(0, hash);
 	}
 
-	if (skillUuid(rest)) {
+	const address = parseAddress(rest);
+	if (address) {
+		const path =
+			address.kind === 'skill'
+				? `/skills/${address.username}/${address.name}`
+				: `/packs/${address.username}/${address.slug}`;
 		return {
 			host: 'skilless',
-			label: shortAddress(rest),
-			href: rest.includes('://') ? rest : `https://${rest}`
+			label: cliAddress(address),
+			// `@user/...` names this site; a URL keeps its own host
+			href: rest.startsWith('@') ? path : rest.includes('://') ? rest : `https://${rest}`
 		};
 	}
 

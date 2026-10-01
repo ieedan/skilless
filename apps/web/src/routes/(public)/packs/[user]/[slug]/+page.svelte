@@ -27,7 +27,7 @@
 			{/if}
 		</div>
 		{#if data.mine}
-			<Button href="/my-packs/{data.pack.uuid}" variant="outline" size="sm">
+			<Button href="/my-packs/{data.pack.slug}" variant="outline" size="sm">
 				<RiPencilLine />
 				Edit
 			</Button>
@@ -35,7 +35,10 @@
 	</div>
 
 	<div class="flex flex-wrap items-center gap-3">
-		<Owner owner={data.owner} />
+		<Owner
+			owner={data.owner}
+			href={data.owner.username ? `/packs/${data.owner.username}` : undefined}
+		/>
 		<span class="text-sm text-muted-foreground">
 			{data.pack.count}
 		</span>

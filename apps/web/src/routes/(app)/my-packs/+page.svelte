@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { APP_NAME } from '$lib/constants';
-	import { packAddress, shortAddress, skillCount } from '$lib/pack';
+	import { cliAddress, skillCount } from '$lib/pack';
 	import { search, terms } from '$lib/search';
 	import { submitAction } from '$lib/submit';
 	import { copyText } from '$lib/hooks/use-clipboard.svelte';
@@ -78,7 +78,7 @@
 
 	async function setPublic(packs: Pack[], value: boolean) {
 		const failed = await each(packs, 'setPublic', (pack) => ({
-			uuid: pack.uuid,
+			slug: pack.slug,
 			public: String(value)
 		}));
 		if (failed > 0) toast.error(`Could not update ${failed} of ${count(packs.length)}`);
@@ -93,7 +93,7 @@
 				'Anyone who added them keeps their skills, but can no longer get updates from them. This cannot be undone.',
 			confirm: { text: `Delete ${doomed.length}` },
 			onConfirm: async () => {
-				const failed = await each(doomed, 'remove', (pack) => ({ uuid: pack.uuid }));
+				const failed = await each(doomed, 'remove', (pack) => ({ slug: pack.slug }));
 				if (failed > 0) toast.error(`Could not delete ${failed} of ${count(doomed.length)}`);
 				selection.clear(doomed);
 			}
@@ -101,7 +101,12 @@
 	}
 
 	async function copyAdd(pack: Pack) {
-		const command = `skilless add ${shortAddress(packAddress(page.url.origin, pack.uuid))}`;
+		const username = page.data.username as string | null;
+		if (!username) {
+			toast.error('Your username is not known yet. Try again in a moment.');
+			return;
+		}
+		const command = `skilless add ${cliAddress({ kind: 'pack', username, slug: pack.slug })}`;
 		if ((await copyText(command)) === 'success') toast.success('Copied add command');
 		else toast.error('Could not copy to the clipboard');
 	}
@@ -114,7 +119,7 @@
 			onConfirm: async () => {
 				const result = await submitAction(
 					'/my-packs?/remove',
-					{ uuid: pack.uuid },
+					{ slug: pack.slug },
 					{ keepFocus: true, invalidate: false }
 				);
 				if (result.type !== 'success') toast.error(`Could not delete ${pack.name}`);
@@ -218,7 +223,7 @@
 		{#each results as pack (pack._id)}
 			<ListRow
 				title={pack.name}
-				href="/my-packs/{pack.uuid}"
+				href="/my-packs/{pack.slug}"
 				terms={queryTerms}
 				description={pack.description}
 				selected={selection.has(pack)}
@@ -259,7 +264,7 @@
 							</DropdownMenu.Item>
 							<DropdownMenu.Item>
 								{#snippet child({ props })}
-									<a {...props} href="/packs/{pack.uuid}">
+									<a {...props} href="/packs/{page.data.username}/{pack.slug}">
 										<RiExternalLinkLine />
 										View page
 									</a>

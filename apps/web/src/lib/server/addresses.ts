@@ -4,10 +4,11 @@ import { error, json, type RequestEvent } from '@sveltejs/kit';
 import { authenticate } from './auth';
 
 /*
- * Skills and packs at their addresses. A skill at `/skills/<uuid>` is a page to
- * a browser asking for HTML and JSON to anything else — the CLI. A pack's JSON
- * is its own file, `/packs/<uuid>.json`, read like any pack someone hosts. Public ones are anyone's to read; private
- * ones only their owner's, signed in by cookie or by a CLI bearer token.
+ * Skills and packs at their addresses. A skill at `/skills/<user>/<skill>` is a
+ * page to a browser asking for HTML and JSON to anything else — the CLI. A
+ * pack's JSON is its own file, `/packs/<user>/<slug>.json`, read like any pack
+ * someone hosts. Public ones are anyone's to read; private ones only their
+ * owner's, signed in by cookie or by a CLI bearer token.
  */
 
 /**
@@ -29,19 +30,19 @@ async function asViewer<T>(
 	return await byCookie();
 }
 
-export async function viewSkill(event: RequestEvent, uuid: string) {
+export async function viewSkill(event: RequestEvent, username: string, name: string) {
 	return await asViewer(
 		event,
-		(auth) => auth.convex.query(api.skills.viewFor, { uuid, viewerId: auth.userId }),
-		() => event.locals.convex.query(api.skills.view, { uuid })
+		(auth) => auth.convex.query(api.skills.viewFor, { username, name, viewerId: auth.userId }),
+		() => event.locals.convex.query(api.skills.view, { username, name })
 	);
 }
 
-export async function viewPack(event: RequestEvent, uuid: string) {
+export async function viewPack(event: RequestEvent, username: string, slug: string) {
 	return await asViewer(
 		event,
-		(auth) => auth.convex.query(api.packs.viewFor, { uuid, viewerId: auth.userId }),
-		() => event.locals.convex.query(api.packs.view, { uuid })
+		(auth) => auth.convex.query(api.packs.viewFor, { username, slug, viewerId: auth.userId }),
+		() => event.locals.convex.query(api.packs.view, { username, slug })
 	);
 }
 
@@ -56,6 +57,8 @@ export async function skillJson(view: SkillView) {
 		description: view.skill.description,
 		contentHash: view.skill.contentHash,
 		public: view.skill.public === true,
+		/** The asker's own, so `skilless add` can refuse to copy a skill from itself. */
+		mine: view.mine,
 		files: await fetchFiles(view.files)
 	};
 }
@@ -82,11 +85,11 @@ export function cacheHeaders(isPublic: boolean): Record<string, string> {
 }
 
 /**
- * A pack's JSON, served at `/packs/<uuid>.json` and `/my-packs/<uuid>.json`:
- * what `skilless add` reads, and what anyone writing a pack by hand would serve.
+ * A pack's JSON, served at `/packs/<user>/<slug>.json`: what `skilless add`
+ * reads, and what anyone writing a pack by hand would serve.
  */
-export async function packFile(event: RequestEvent & { params: { id: string } }) {
-	const view = await viewPack(event, event.params.id);
+export async function packFile(event: RequestEvent & { params: { user: string; slug: string } }) {
+	const view = await viewPack(event, event.params.user, event.params.slug);
 	if (!view) return json(NOT_FOUND, { status: 404, headers: cacheHeaders(false) });
 
 	return json(packJson(view, event.url.origin), {

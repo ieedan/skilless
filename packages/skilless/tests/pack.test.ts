@@ -27,6 +27,13 @@ describe('addressOf', () => {
 		expect(addressOf('example.com/owner/repo#main')).toBeNull();
 	});
 
+	it('reads `@user/...` as an address on skilless, never a GitHub repo', () => {
+		expect(addressOf('@ieedan/grill-me')).toBe('https://skilless.dev/skills/ieedan/grill-me');
+		expect(addressOf('@IEEDAN/pack/svelte')).toBe('https://skilless.dev/packs/ieedan/svelte');
+		// only those two shapes: anything deeper is not shorthand for anything
+		expect(addressOf('@ieedan/a/b')).toBeNull();
+	});
+
 	it('reads a pack file on GitHub raw', () => {
 		expect(addressOf('https://github.com/o/r/blob/main/packs/svelte.json')).toBe(
 			'https://raw.githubusercontent.com/o/r/main/packs/svelte.json'
@@ -35,18 +42,16 @@ describe('addressOf', () => {
 });
 
 describe('packFile', () => {
-	const uuid = '2e396473-e5bd-4b76-95d2-c25c34379437';
-
 	it('reads a pack page as the JSON beside it', () => {
-		expect(packFile(`/packs/${uuid}`)).toBe(`/packs/${uuid}.json`);
-		expect(packFile(`/my-packs/${uuid}/`)).toBe(`/packs/${uuid}.json`);
+		expect(packFile('/packs/ieedan/svelte')).toBe('/packs/ieedan/svelte.json');
+		expect(packFile('/packs/IEEDAN/svelte/')).toBe('/packs/ieedan/svelte.json');
 	});
 
 	it('leaves the JSON, and anything else, alone', () => {
-		expect(packFile(`/packs/${uuid}.json`)).toBe(`/packs/${uuid}.json`);
-		expect(packFile(`/my-packs/${uuid}.json`)).toBe(`/my-packs/${uuid}.json`);
-		expect(packFile(`/skills/${uuid}`)).toBe(`/skills/${uuid}`);
-		expect(packFile('/packs/not-a-uuid')).toBe('/packs/not-a-uuid');
+		expect(packFile('/packs/ieedan/svelte.json')).toBe('/packs/ieedan/svelte.json');
+		expect(packFile('/skills/ieedan/grill-me')).toBe('/skills/ieedan/grill-me');
+		expect(packFile('/packs/ieedan')).toBe('/packs/ieedan');
+		expect(packFile('/my-packs/svelte')).toBe('/my-packs/svelte');
 	});
 });
 

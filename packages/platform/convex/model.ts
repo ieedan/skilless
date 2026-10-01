@@ -6,6 +6,7 @@ import { convexError, createConvexError } from './errors';
 import { parse } from 'yaml';
 import { r2, toLinks, type FileLink } from './r2';
 import { skillsAt } from './discover';
+import { profileByUsername, profileOf } from './profiles';
 
 /**
  * A file as it travels: text as is, or a binary file's bytes as base64. Stored
@@ -114,6 +115,12 @@ export function summarize(files: SkillFile[]): Frontmatter & { soleFile?: string
 export type SkillSummary = Doc<'skills'> & {
 	/** Projects the skill is explicitly bound to. Globals reach every project regardless. */
 	projectIds: Id<'projects'>[];
+	/**
+	 * For a copy of a skill on skilless: the original's hash as it is now, so the
+	 * list knows live whether there is anything to update. Null when the original
+	 * is gone or no longer yours to see; absent for any other source.
+	 */
+	upstreamHash?: string | null;
 };
 
 /** The website's skill list. Reads only skill rows and bindings — never file contents. */
@@ -127,7 +134,18 @@ export async function listSkillsForDisplay(ctx: QueryCtx, userId: string): Promi
 				.withIndex('by_skill', (q) => q.eq('skillId', skill._id))
 				.collect();
 
-			return { ...skill, projectIds: bindings.map((binding) => binding.projectId) };
+			const address = skill.source ? parseAddress(skill.source.url) : null;
+			let upstreamHash: string | null | undefined;
+			if (address?.kind === 'skill') {
+				const original = await findSkillAt(ctx, address.username, address.name);
+				upstreamHash = original && canView(original, userId) ? original.contentHash : null;
+			}
+
+			return {
+				...skill,
+				projectIds: bindings.map((binding) => binding.projectId),
+				...(upstreamHash !== undefined ? { upstreamHash } : {})
+			};
 		})
 	);
 }
@@ -180,43 +198,117 @@ export async function setPublic(
 	const skill = await findSkill(ctx, userId, name);
 	if (!skill) throw createConvexError(convexError.SkillNotFound());
 
-	await ctx.db.patch(skill._id, { public: value, uuid: skill.uuid ?? crypto.randomUUID() });
+	await ctx.db.patch(skill._id, { public: value });
 }
 
 /* -------------------------------------------------------------- addresses */
 
-/** Matches a UUID, as every skill and pack address ends in one. */
-const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+/**
+ * Something on skilless, as an address names it: a skill by its owner's
+ * username and its name, or a pack by its owner's username and its slug.
+ */
+export type Address =
+	| { kind: 'skill'; username: string; name: string }
+	| { kind: 'pack'; username: string; slug: string };
 
 /**
- * The skill a pack entry points at, when it is a `…/skills/<uuid>` address
- * rather than a repository. Any host: it is the UUID that names the skill.
+ * Reads an address however it is written: the CLI's `@user/skill` and
+ * `@user/pack/<slug>`, or a page or its JSON on any skilless host,
+ * `<host>/skills/<user>/<skill>` and `<host>/packs/<user>/<slug>`. A host is
+ * required there, with a dot or a port, so `owner/repo/...` stays a GitHub path.
  */
-export function skillUuidOf(entry: string): string | null {
-	return new RegExp(`/skills/(${UUID})/?$`, 'i').exec(entry.trim())?.[1]?.toLowerCase() ?? null;
+export function parseAddress(entry: string): Address | null {
+	const raw = entry.trim().split('#')[0]!.replace(/\/+$/, '');
+
+	const at = /^@([a-z\d][a-z\d-]*)\/(?:pack\/([^/\s]+)|([^/\s]+))$/i.exec(raw);
+	if (at) {
+		const username = at[1]!.toLowerCase();
+		return at[2]
+			? { kind: 'pack', username, slug: at[2].toLowerCase() }
+			: { kind: 'skill', username, name: at[3]!.toLowerCase() };
+	}
+
+	const url =
+		/^(?:https?:\/\/)?([^/\s]+)\/(skills|packs)\/([a-z\d][a-z\d-]*)\/([^/\s]+?)(?:\.json)?$/i.exec(
+			raw
+		);
+	if (!url) return null;
+	const host = url[1]!.toLowerCase();
+	if (!/[.:]/.test(host) || host === 'github.com' || host === 'www.github.com') return null;
+
+	const username = url[3]!.toLowerCase();
+	const tail = url[4]!.toLowerCase();
+	return url[2]!.toLowerCase() === 'skills'
+		? { kind: 'skill', username, name: tail }
+		: { kind: 'pack', username, slug: tail };
 }
 
-export function isUuid(value: string): boolean {
-	return new RegExp(`^${UUID}$`, 'i').test(value);
+/** A live skill by its owner's username and its name. */
+export async function findSkillAt(
+	ctx: QueryCtx,
+	username: string,
+	name: string
+): Promise<Doc<'skills'> | null> {
+	const profile = await profileByUsername(ctx, username);
+	return profile ? await findSkill(ctx, profile.userId, name) : null;
 }
 
-/** A live skill by its address. */
-export async function findSkillByUuid(ctx: QueryCtx, uuid: string): Promise<Doc<'skills'> | null> {
-	const rows = await ctx.db
-		.query('skills')
-		.withIndex('by_uuid', (q) => q.eq('uuid', uuid.toLowerCase()))
-		.collect();
+/** A pack by its owner's username and its slug. */
+export async function findPackAt(
+	ctx: QueryCtx,
+	username: string,
+	slug: string
+): Promise<Doc<'packs'> | null> {
+	const profile = await profileByUsername(ctx, username);
+	return profile ? await findPackBySlug(ctx, profile.userId, slug) : null;
+}
 
-	return rows.find((r) => r.deletedAt === undefined) ?? null;
+/** The skill an entry names, when it is a skilless skill address. */
+async function skillOfEntry(ctx: QueryCtx, entry: string): Promise<Doc<'skills'> | null> {
+	const address = parseAddress(entry);
+	return address?.kind === 'skill' ? await findSkillAt(ctx, address.username, address.name) : null;
+}
+
+/** The pack an entry names, when it is a skilless pack address. */
+async function packOfEntry(ctx: QueryCtx, entry: string): Promise<Doc<'packs'> | null> {
+	const address = parseAddress(entry);
+	return address?.kind === 'pack' ? await findPackAt(ctx, address.username, address.slug) : null;
+}
+
+/** Whether the user already has a copy of this skilless skill: one whose source is its address. */
+export async function hasCopyOf(
+	ctx: QueryCtx,
+	userId: string,
+	username: string,
+	name: string
+): Promise<boolean> {
+	const skills = await listSkills(ctx, userId);
+	return skills.some((skill) => {
+		const address = skill.source ? parseAddress(skill.source.url) : null;
+		return (
+			address?.kind === 'skill' &&
+			address.username === username.toLowerCase() &&
+			address.name === name
+		);
+	});
+}
+
+/** A user's username, or null for one GitHub has not been asked about yet. */
+export async function usernameOf(ctx: QueryCtx, userId: string): Promise<string | null> {
+	return (await profileOf(ctx, userId))?.username ?? null;
 }
 
 /** Who made a skill or pack, as its public page shows them. */
-export type Owner = { name: string; image: string | null };
+export type Owner = { name: string; image: string | null; username: string | null };
 
 export async function ownerOf(ctx: QueryCtx, userId: string): Promise<Owner> {
 	const user = await authComponent.getAnyUserById(ctx, userId);
 	// never the email: that is only ever shown to its owner, and only if they allow it
-	return { name: user?.name?.trim() || 'Someone', image: user?.image ?? null };
+	return {
+		name: user?.name?.trim() || 'Someone',
+		image: user?.image ?? null,
+		username: await usernameOf(ctx, userId)
+	};
 }
 
 /** May this viewer read it? The owner always; anyone else only once it is public. */
@@ -235,10 +327,11 @@ export type SkillView = {
 /** A skill at its address, for its page and its JSON. Null when absent or not the viewer's to see. */
 export async function viewSkill(
 	ctx: QueryCtx,
-	uuid: string,
+	username: string,
+	name: string,
 	viewerId: string | null
 ): Promise<SkillView | null> {
-	const skill = await findSkillByUuid(ctx, uuid);
+	const skill = await findSkillAt(ctx, username, name);
 	if (!skill || !canView(skill, viewerId)) return null;
 
 	return {
@@ -253,7 +346,8 @@ export async function viewSkill(
 
 /** What a pack entry that names a skill on skilless resolves to, for display. */
 export type EntrySkill = {
-	uuid: string;
+	/** Its owner's, for its address. */
+	username: string;
 	name: string;
 	title?: string;
 	description?: string;
@@ -299,7 +393,9 @@ export type EntryRepo = {
 
 /** What a pack entry naming another pack resolves to, for display. */
 export type EntryPack = {
-	uuid: string;
+	/** Its owner's username and its slug, for its address. */
+	username: string;
+	slug: string;
 	name: string;
 	description?: string;
 	skillCount: number;
@@ -317,18 +413,6 @@ export type ResolvedEntry = {
 };
 
 /**
- * The pack an entry names, when it is a skilless pack address — its page,
- * `/packs/<uuid>`, its JSON, or the page that edits it, on any host.
- */
-export function packUuidOf(entry: string): string | null {
-	return (
-		new RegExp(`/(?:my-)?packs/(${UUID})(?:\\.json)?/?$`, 'i')
-			.exec(entry.trim().split('#')[0]!)?.[1]
-			?.toLowerCase() ?? null
-	);
-}
-
-/**
  * A pack's entries, each with what it names: the skill, for a skilless address
  * the viewer can see; the repo's description and skills, for a GitHub entry its
  * owner has scanned. Anything else — gone, private to someone else, not scanned
@@ -344,15 +428,16 @@ export async function resolveEntries(
 		entries.map(async (entry): Promise<ResolvedEntry> => {
 			const none = { entry, skill: null, repo: null, pack: null };
 
-			const packUuid = packUuidOf(entry);
-			if (packUuid) {
-				const pack = await findPack(ctx, packUuid);
+			const address = parseAddress(entry);
+			if (address?.kind === 'pack') {
+				const pack = await findPackAt(ctx, address.username, address.slug);
 				if (!pack || !canView(pack, viewerId)) return none;
 
 				return {
 					...none,
 					pack: {
-						uuid: pack.uuid,
+						username: address.username,
+						slug: pack.slug,
 						name: pack.name,
 						...(pack.description ? { description: pack.description } : {}),
 						skillCount: pack.skillCount ?? pack.skills.length,
@@ -364,9 +449,8 @@ export async function resolveEntries(
 				};
 			}
 
-			const uuid = skillUuidOf(entry);
-			if (uuid) {
-				const skill = await findSkillByUuid(ctx, uuid);
+			if (address?.kind === 'skill') {
+				const skill = await findSkillAt(ctx, address.username, address.name);
 				if (!skill || !canView(skill, viewerId)) return none;
 
 				return {
@@ -374,7 +458,7 @@ export async function resolveEntries(
 					repo: null,
 					pack: null,
 					skill: {
-						uuid: skill.uuid!,
+						username: address.username,
 						name: skill.name,
 						title: skill.title,
 						description: skill.description,
@@ -433,9 +517,8 @@ export async function snapshotCount(
 	let partial = false;
 
 	for (const entry of pack.skills) {
-		const nested = packUuidOf(entry);
-		if (nested) {
-			const inner = await findPack(ctx, nested);
+		if (parseAddress(entry)?.kind === 'pack') {
+			const inner = await packOfEntry(ctx, entry);
 			if (inner && canView(inner, pack.userId)) {
 				count += inner.skillCount ?? inner.skills.length;
 				partial ||= inner.skillCount === undefined || inner.countPartial === true;
@@ -496,7 +579,12 @@ export async function linkPacks(ctx: MutationCtx, pack: Doc<'packs'>): Promise<v
 		.collect();
 	for (const link of links) await ctx.db.delete(link._id);
 
-	const included = new Set(pack.skills.flatMap((entry) => packUuidOf(entry) ?? []));
+	// linked by the pack's internal id, which a rename of anything never touches
+	const included = new Set<string>();
+	for (const entry of pack.skills) {
+		const inner = await packOfEntry(ctx, entry);
+		if (inner) included.add(inner.uuid);
+	}
 	for (const to of included) await ctx.db.insert('packLinks', { from: pack._id, to });
 }
 
@@ -522,20 +610,19 @@ export async function assertNoLoop(
 
 		const inner = await findPack(ctx, uuid);
 		for (const entry of inner?.skills ?? []) {
-			const next = packUuidOf(entry);
-			if (next && (await reaches(next))) return true;
+			const next = await packOfEntry(ctx, entry);
+			if (next && (await reaches(next.uuid))) return true;
 		}
 		return false;
 	};
 
 	for (const entry of entries) {
-		const uuid = packUuidOf(entry);
-		if (!uuid) continue;
-		if (uuid === pack.uuid) invalid('a pack cannot include itself');
+		const inner = await packOfEntry(ctx, entry);
+		if (!inner) continue;
+		if (inner.uuid === pack.uuid) invalid('a pack cannot include itself');
 
-		if (await reaches(uuid)) {
-			const inner = await findPack(ctx, uuid);
-			const name = inner && canView(inner, pack.userId) ? inner.name : 'that pack';
+		if (await reaches(inner.uuid)) {
+			const name = canView(inner, pack.userId) ? inner.name : 'that pack';
 			invalid(`${name} already includes ${pack.name}, so adding it would make a loop`);
 		}
 	}
@@ -575,16 +662,15 @@ export async function packSkills(
 				if (!found.has(skill.name)) found.set(skill.name, skill);
 			};
 
-			const nested = packUuidOf(entry);
-			if (nested) {
-				const inner = await findPack(ctx, nested);
+			const address = parseAddress(entry);
+			if (address?.kind === 'pack') {
+				const inner = await findPackAt(ctx, address.username, address.slug);
 				if (inner && canView(inner, viewerId)) await walk(inner);
 				continue;
 			}
 
-			const uuid = skillUuidOf(entry);
-			if (uuid) {
-				const skill = await findSkillByUuid(ctx, uuid);
+			if (address?.kind === 'skill') {
+				const skill = await skillOfEntry(ctx, entry);
 				if (skill && canView(skill, viewerId)) {
 					take({
 						entry,
@@ -625,6 +711,7 @@ export async function packSkills(
 	return [...found.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** A pack by its internal id, which only links between packs use. Never in an address. */
 export async function findPack(ctx: QueryCtx, uuid: string): Promise<Doc<'packs'> | null> {
 	return await ctx.db
 		.query('packs')
@@ -632,10 +719,22 @@ export async function findPack(ctx: QueryCtx, uuid: string): Promise<Doc<'packs'
 		.first();
 }
 
-/** One of the user's own packs, for changing it. */
-export async function ownPack(ctx: QueryCtx, userId: string, uuid: string): Promise<Doc<'packs'>> {
-	const pack = await findPack(ctx, uuid);
-	if (!pack || pack.userId !== userId) throw createConvexError(convexError.PackNotFound());
+/** One of a user's packs by its slug. */
+export async function findPackBySlug(
+	ctx: QueryCtx,
+	userId: string,
+	slug: string
+): Promise<Doc<'packs'> | null> {
+	return await ctx.db
+		.query('packs')
+		.withIndex('by_user_and_slug', (q) => q.eq('userId', userId).eq('slug', slug.toLowerCase()))
+		.unique();
+}
+
+/** One of the user's own packs, by its slug, for changing it. */
+export async function ownPack(ctx: QueryCtx, userId: string, slug: string): Promise<Doc<'packs'>> {
+	const pack = await findPackBySlug(ctx, userId, slug);
+	if (!pack) throw createConvexError(convexError.PackNotFound());
 	return pack;
 }
 
@@ -658,11 +757,21 @@ export type PackView = {
 /** A pack at its address, for its page and its JSON. Null when absent or not the viewer's to see. */
 export async function viewPack(
 	ctx: QueryCtx,
-	uuid: string,
+	username: string,
+	slug: string,
 	viewerId: string | null
 ): Promise<PackView | null> {
-	const pack = await findPack(ctx, uuid);
-	if (!pack || !canView(pack, viewerId)) return null;
+	const pack = await findPackAt(ctx, username, slug);
+	return pack ? await packView(ctx, pack, viewerId) : null;
+}
+
+/** A pack as its page shows it. Null when it is not the viewer's to see. */
+export async function packView(
+	ctx: QueryCtx,
+	pack: Doc<'packs'>,
+	viewerId: string | null
+): Promise<PackView | null> {
+	if (!canView(pack, viewerId)) return null;
 
 	return {
 		pack,
@@ -755,7 +864,6 @@ export async function commitSkill(
 		skillId = await ctx.db.insert('skills', {
 			userId: args.userId,
 			name: args.name,
-			uuid: crypto.randomUUID(),
 			...fields
 		});
 	}

@@ -6,8 +6,10 @@ description: Share a set of skills from anywhere as one address, and add them al
 A pack is a list of skills from other places: GitHub repositories, or skills on skilless. Add one and every skill in it lands in your library and this project:
 
 ```bash
-skilless add skilless.dev/packs/<id>
+skilless add @ieedan/pack/svelte-essentials
 ```
+
+That is the pack `svelte-essentials` by `ieedan`. Its page, and its full link, is `skilless.dev/packs/ieedan/svelte-essentials`.
 
 Each skill remembers the pack it came from. `skilless list` and the dashboard show the pack as its origin.
 
@@ -43,7 +45,7 @@ skilless add ./team-pack.json
 		"github.com/anthropics/skills",
 		"github.com/sveltejs/ai-tools/skills#main",
 		"github.com/ieedan/skills/.agents/skills/test",
-		"https://skilless.dev/skills/<id>"
+		"@ieedan/grill-me"
 	]
 }
 ```
@@ -52,9 +54,9 @@ Only `skills` is required. Each entry is one of:
 
 - **A repository**, `github.com/owner/repo`: every skill in it.
 - **A folder in one**, `github.com/owner/repo/path`: every skill in that folder, or the one skill if that is where it lives.
-- **A skill on skilless**, `https://skilless.dev/skills/<id>`. Copy a skill's link from its menu on the dashboard.
+- **A skill on skilless**, `@user/skill`, or its link `https://skilless.dev/skills/<user>/<skill>`. Copy a skill's link from its menu on the dashboard.
 
-- **Another pack**, `https://skilless.dev/packs/<id>`, any URL serving one, or a pack file beside this one (`./base.json`): every skill in it, including ones it gains later.
+- **Another pack**, `@user/pack/<pack>` or `https://skilless.dev/packs/<user>/<pack>`, any URL serving one, or a pack file beside this one (`./base.json`): every skill in it, including ones it gains later.
 
 Add `#branch` or `#tag` to a repository to pin it.
 
