@@ -25,13 +25,13 @@ Create a skill in your library, add it to this project and print the path to its
 skilless create [name]
 ```
 
-| Option                     | Description                                                                 |
-| -------------------------- | --------------------------------------------------------------------------- |
-| `-d, --description <text>` | What the skill does, for the frontmatter.                                   |
-| `-g, --global`             | Make it [global](/docs/global-skills) instead of adding it to this project. |
-| `--disable-model-invocation` | Only run the skill when you invoke it, never on the agent's own. |
-| `--no-open`                | Don't open `SKILL.md` in your editor.                                       |
-| `--project <key>`          | Use this project key instead of the one from the git remote.                |
+| Option                       | Description                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `-d, --description <text>`   | What the skill does, for the frontmatter.                                   |
+| `-g, --global`               | Make it [global](/docs/global-skills) instead of adding it to this project. |
+| `--disable-model-invocation` | Only run the skill when you invoke it, never on the agent's own.            |
+| `--no-open`                  | Don't open `SKILL.md` in your editor.                                       |
+| `--project <key>`            | Use this project key instead of the one from the git remote.                |
 
 You're asked for a name if you leave it out.
 

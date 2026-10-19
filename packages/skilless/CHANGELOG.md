@@ -1,5 +1,11 @@
 # skilless
 
+## 0.2.1
+
+### Patch Changes
+
+- [`31c7f2a`](https://github.com/ieedan/skilless/commit/31c7f2afd39ded61b52c237ac4bedc149c64e0e5) Thanks [@ieedan](https://github.com/ieedan)! - add flag to disable model invocation on new skills
+
 ## 0.2.0
 
 ### Minor Changes
