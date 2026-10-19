@@ -10,6 +10,7 @@
 	import { isValidName, NAME_RULES } from '$lib/skill';
 	import * as Modal from '$lib/components/ui/modal';
 	import { Input } from '$lib/components/ui/input';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import { Label } from '$lib/components/ui/label';
 	import { LoadingButton } from '$lib/components/ui/loading-button';
@@ -662,6 +663,13 @@
 						placeholder="What does this skill do, and when should an agent reach for it?"
 						value={form?.description ?? ''}
 					/>
+				</div>
+
+				<div class="flex items-center gap-2">
+					<Checkbox id="skill-disable-model-invocation" name="disableModelInvocation" />
+					<Label for="skill-disable-model-invocation" class="font-mono font-normal">
+						disable-model-invocation
+					</Label>
 				</div>
 
 				<!-- the name rule is already shown under the field -->

@@ -159,11 +159,17 @@ export function findLocalSkill(name: string): LocalSkill | null {
 	return readSkill(dir, name);
 }
 
-export function scaffold(name: string, description: string): SkillFile[] {
+export function scaffold(
+	name: string,
+	description: string,
+	disableModelInvocation = false
+): SkillFile[] {
+	const extra = disableModelInvocation ? 'disable-model-invocation: true\n' : '';
+
 	return [
 		{
 			path: SKILL_FILE,
-			contents: `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\nDescribe what this skill does and when an agent should reach for it.\n`
+			contents: `---\nname: ${name}\ndescription: ${description}\n${extra}---\n\n# ${name}\n\nDescribe what this skill does and when an agent should reach for it.\n`
 		}
 	];
 }

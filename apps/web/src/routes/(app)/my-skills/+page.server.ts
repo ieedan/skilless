@@ -37,7 +37,7 @@ export const actions = {
 			});
 		}
 
-		const files = scaffold(name, description);
+		const files = scaffold(name, description, data.get('disableModelInvocation') === 'on');
 
 		await locals.convex.action(api.files.create, { name, files });
 

@@ -29,6 +29,7 @@ const schema = defaultCommandOptionsSchema.extend({
 	description: z.string().optional(),
 	project: z.string().optional(),
 	global: z.boolean().optional(),
+	disableModelInvocation: z.boolean().optional(),
 	sync: z.boolean().optional(),
 	open: z.boolean()
 });
@@ -42,6 +43,10 @@ export const create = new Command('create')
 	.option(
 		'-g, --global',
 		'Make it global: linked once into ~/.agents/skills and ~/.claude/skills, so every project has it, including cloud agents.'
+	)
+	.option(
+		'--disable-model-invocation',
+		'Only run the skill when you invoke it, so the agent never loads it on its own.'
 	)
 	.option('--no-open', 'Do not open SKILL.md in your editor (see `skilless config editor`).')
 	.addOption(commonOptions.project)
@@ -91,7 +96,7 @@ export const create = new Command('create')
 
 			const description = options.description ?? (await input('What does this skill do?'));
 
-			writeSkill(name, scaffold(name, description));
+			writeSkill(name, scaffold(name, description, options.disableModelInvocation));
 
 			// unknown to state.json is what makes a push send it as new, rather
 			// than read it as a skill deleted elsewhere
